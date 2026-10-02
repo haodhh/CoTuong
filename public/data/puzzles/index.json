@@ -1,98 +1,103 @@
 {
  "version": 1,
- "generatedAt": "2026-10-02T03:13:23.466Z",
+ "generatedAt": "2026-10-02T04:13:37.735Z",
  "source": "Sinh tự động từ các ván máy tự đấu (scripts/generate-puzzles.ts)",
  "bandSize": 100,
- "total": 320,
+ "total": 4979,
  "bands": [
   {
+   "band": 500,
+   "count": 38,
+   "file": "r0500.json"
+  },
+  {
    "band": 600,
-   "count": 48,
+   "count": 400,
    "file": "r0600.json"
   },
   {
    "band": 700,
-   "count": 119,
+   "count": 400,
    "file": "r0700.json"
   },
   {
    "band": 800,
-   "count": 13,
+   "count": 400,
    "file": "r0800.json"
   },
   {
    "band": 900,
-   "count": 5,
+   "count": 217,
    "file": "r0900.json"
   },
   {
    "band": 1000,
-   "count": 25,
+   "count": 400,
    "file": "r1000.json"
   },
   {
    "band": 1100,
-   "count": 21,
+   "count": 400,
    "file": "r1100.json"
   },
   {
    "band": 1200,
-   "count": 6,
+   "count": 166,
    "file": "r1200.json"
   },
   {
    "band": 1300,
-   "count": 11,
+   "count": 400,
    "file": "r1300.json"
   },
   {
    "band": 1400,
-   "count": 28,
+   "count": 400,
    "file": "r1400.json"
   },
   {
    "band": 1500,
-   "count": 9,
+   "count": 300,
    "file": "r1500.json"
   },
   {
    "band": 1600,
-   "count": 3,
+   "count": 232,
    "file": "r1600.json"
   },
   {
    "band": 1700,
-   "count": 6,
+   "count": 400,
    "file": "r1700.json"
   },
   {
    "band": 1800,
-   "count": 5,
+   "count": 223,
    "file": "r1800.json"
   },
   {
    "band": 1900,
-   "count": 10,
+   "count": 274,
    "file": "r1900.json"
   },
   {
    "band": 2000,
-   "count": 5,
+   "count": 214,
    "file": "r2000.json"
   },
   {
    "band": 2100,
-   "count": 4,
+   "count": 84,
    "file": "r2100.json"
   },
   {
    "band": 2200,
-   "count": 1,
+   "count": 27,
    "file": "r2200.json"
   },
   {
    "band": 2300,
-   "count": 1,
+   "count": 4,
    "file": "r2300.json"
   }
  ],
@@ -120,26 +125,26 @@
   "endgame"
  ],
  "themeCounts": {
-  "mateIn1": 180,
-  "endgame": 62,
-  "mateRook": 211,
-  "bachDienTuong": 26,
-  "mateHorse": 22,
-  "middlegame": 258,
-  "xeMa": 94,
-  "xePhao": 64,
-  "mateCannon": 87,
-  "maNgoaTao": 7,
-  "maPhao": 39,
-  "maHauPhao": 15,
-  "trungPhao": 14,
-  "matePawn": 14,
-  "doubleCheck": 14,
-  "songXe": 49,
-  "mateIn2": 58,
-  "sacrifice": 29,
-  "mateIn3": 50,
-  "mateIn4": 16,
-  "mateIn5": 16
+  "mateIn1": 1284,
+  "endgame": 1372,
+  "mateRook": 3547,
+  "bachDienTuong": 550,
+  "middlegame": 3607,
+  "xePhao": 921,
+  "xeMa": 1466,
+  "songXe": 1231,
+  "maPhao": 605,
+  "matePawn": 240,
+  "mateHorse": 359,
+  "maNgoaTao": 56,
+  "mateCannon": 1067,
+  "maHauPhao": 274,
+  "trungPhao": 189,
+  "doubleCheck": 237,
+  "mateIn2": 1149,
+  "sacrifice": 709,
+  "mateIn3": 1167,
+  "mateIn4": 832,
+  "mateIn5": 547
  }
 }
