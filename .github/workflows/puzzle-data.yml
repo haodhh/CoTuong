@@ -1,0 +1,54 @@
+name: Build puzzle data
+
+# Generates mate puzzles from engine self-play games into public/data/puzzles and commits the
+# result to the branch it ran on.
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Minutes of generation
+        default: '60'
+      per_band:
+        description: Puzzles per 100-point rating band
+        default: '400'
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: puzzle-data-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Generate puzzles
+        run: npm run build:puzzles -- --minutes "${{ inputs.minutes }}" --per-band "${{ inputs.per_band }}"
+      - name: Commit data
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/puzzles
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "Update generated puzzle data"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Redeploy site
+        # Pushes made with GITHUB_TOKEN do not trigger other workflows, so start the deploy explicitly.
+        if: steps.commit.outputs.changed == 'true' && github.ref_name == github.event.repository.default_branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --ref "${{ github.ref_name }}"

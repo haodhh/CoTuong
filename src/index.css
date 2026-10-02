@@ -1,0 +1,120 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-bg: #23201d;
+  --color-panel: #302b27;
+  --color-panel-2: #3d3732;
+  --color-accent: #d64933;
+  --color-accent-dark: #9c2f1f;
+  --color-good: #7fb04a;
+  --color-bad: #e2574c;
+  --color-warn: #f5b84a;
+  --color-muted: #aaa29b;
+  --font-sans: 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: #f5f5f4;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-panel-2 px-4 py-2.5 font-semibold transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-primary {
+    @apply bg-accent text-white shadow-[0_4px_0_0_var(--color-accent-dark)] hover:bg-[#e2604b] active:translate-y-0.5 active:shadow-none;
+  }
+  .btn-sm {
+    @apply px-2 py-1 text-xs;
+  }
+  .card {
+    @apply rounded-xl bg-panel p-4;
+  }
+  .link {
+    @apply text-[#f08a6e] hover:underline;
+  }
+  .chip {
+    @apply rounded-lg bg-panel-2 px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-white/15;
+  }
+  .chip-on {
+    @apply bg-accent text-white hover:bg-accent;
+  }
+}
+
+/* Board themes. */
+.board-wood {
+  --board-bg: #e9c48a;
+  --board-line: #6b4423;
+  --board-text: rgba(107, 68, 35, 0.75);
+}
+.board-light {
+  --board-bg: #f4e6c8;
+  --board-line: #8a6a44;
+  --board-text: rgba(138, 106, 68, 0.75);
+}
+.board-green {
+  --board-bg: #cfdcae;
+  --board-line: #3f5a2a;
+  --board-text: rgba(63, 90, 42, 0.75);
+}
+.board-dark {
+  --board-bg: #4a3b30;
+  --board-line: #d9c3a0;
+  --board-text: rgba(217, 195, 160, 0.7);
+}
+.board-bg {
+  fill: var(--board-bg);
+}
+.grid-lines line,
+.grid-lines polyline,
+.grid-lines rect:not(.board-bg) {
+  stroke: var(--board-line);
+  stroke-width: 2.5;
+}
+.grid-lines .river {
+  fill: var(--board-text);
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  font-family: 'Noto Serif SC', 'KaiTi', 'STKaiti', serif;
+}
+.grid-lines .coords text {
+  fill: var(--board-text);
+  font-size: 30px;
+  font-weight: 700;
+}
+.last-move {
+  fill: rgba(56, 189, 248, 0.28);
+  stroke: rgba(14, 116, 144, 0.7);
+  stroke-width: 3;
+  stroke-dasharray: 14 10;
+}
+.mark {
+  fill: rgba(250, 204, 21, 0.35);
+  stroke: rgba(202, 138, 4, 0.9);
+  stroke-width: 4;
+}
+.dest {
+  fill: rgba(22, 163, 74, 0.8);
+  pointer-events: none;
+}
+.dest-capture {
+  fill: none;
+  stroke: rgba(22, 163, 74, 0.85);
+  stroke-width: 7;
+  pointer-events: none;
+}
+.check-glow {
+  animation: check-pulse 1s ease-in-out infinite alternate;
+}
+@keyframes check-pulse {
+  from {
+    opacity: 0.45;
+  }
+  to {
+    opacity: 1;
+  }
+}
