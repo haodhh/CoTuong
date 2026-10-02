@@ -1,0 +1,145 @@
+{
+ "version": 1,
+ "generatedAt": "2026-10-02T03:13:23.466Z",
+ "source": "Sinh tự động từ các ván máy tự đấu (scripts/generate-puzzles.ts)",
+ "bandSize": 100,
+ "total": 320,
+ "bands": [
+  {
+   "band": 600,
+   "count": 48,
+   "file": "r0600.json"
+  },
+  {
+   "band": 700,
+   "count": 119,
+   "file": "r0700.json"
+  },
+  {
+   "band": 800,
+   "count": 13,
+   "file": "r0800.json"
+  },
+  {
+   "band": 900,
+   "count": 5,
+   "file": "r0900.json"
+  },
+  {
+   "band": 1000,
+   "count": 25,
+   "file": "r1000.json"
+  },
+  {
+   "band": 1100,
+   "count": 21,
+   "file": "r1100.json"
+  },
+  {
+   "band": 1200,
+   "count": 6,
+   "file": "r1200.json"
+  },
+  {
+   "band": 1300,
+   "count": 11,
+   "file": "r1300.json"
+  },
+  {
+   "band": 1400,
+   "count": 28,
+   "file": "r1400.json"
+  },
+  {
+   "band": 1500,
+   "count": 9,
+   "file": "r1500.json"
+  },
+  {
+   "band": 1600,
+   "count": 3,
+   "file": "r1600.json"
+  },
+  {
+   "band": 1700,
+   "count": 6,
+   "file": "r1700.json"
+  },
+  {
+   "band": 1800,
+   "count": 5,
+   "file": "r1800.json"
+  },
+  {
+   "band": 1900,
+   "count": 10,
+   "file": "r1900.json"
+  },
+  {
+   "band": 2000,
+   "count": 5,
+   "file": "r2000.json"
+  },
+  {
+   "band": 2100,
+   "count": 4,
+   "file": "r2100.json"
+  },
+  {
+   "band": 2200,
+   "count": 1,
+   "file": "r2200.json"
+  },
+  {
+   "band": 2300,
+   "count": 1,
+   "file": "r2300.json"
+  }
+ ],
+ "themes": [
+  "mateIn1",
+  "mateIn2",
+  "mateIn3",
+  "mateIn4",
+  "mateIn5",
+  "sacrifice",
+  "doubleCheck",
+  "mateRook",
+  "mateHorse",
+  "mateCannon",
+  "matePawn",
+  "maHauPhao",
+  "trungPhao",
+  "maNgoaTao",
+  "bachDienTuong",
+  "songXe",
+  "xeMa",
+  "xePhao",
+  "maPhao",
+  "middlegame",
+  "endgame"
+ ],
+ "themeCounts": {
+  "mateIn1": 180,
+  "endgame": 62,
+  "mateRook": 211,
+  "bachDienTuong": 26,
+  "mateHorse": 22,
+  "middlegame": 258,
+  "xeMa": 94,
+  "xePhao": 64,
+  "mateCannon": 87,
+  "maNgoaTao": 7,
+  "maPhao": 39,
+  "maHauPhao": 15,
+  "trungPhao": 14,
+  "matePawn": 14,
+  "doubleCheck": 14,
+  "songXe": 49,
+  "mateIn2": 58,
+  "sacrifice": 29,
+  "mateIn3": 50,
+  "mateIn4": 16,
+  "mateIn5": 16
+ }
+}
