@@ -6,7 +6,9 @@ import { isProvisional } from '../core/glicko2';
 import { ratingHistory, streakDays, themeStats, weakestThemes } from '../core/stats';
 import { themeName } from '../core/themes';
 import type { PuzzleMode } from '../data/db';
-import { currentRating, useAttempts, useDueCount, useProfile, useRushBest } from '../data/store';
+import type { GameRecord } from '../data/db';
+import { currentRating, useAttempts, useDueCount, useGames, useProfile, useRushBest } from '../data/store';
+import { BOT_LEVELS } from '../engine/levels';
 
 const MODE_LABEL: Record<PuzzleMode, string> = {
   rated: 'Tính điểm',
@@ -30,6 +32,7 @@ export function Stats() {
   const profile = useProfile();
   const attempts = useAttempts();
   const best = useRushBest();
+  const games = useGames();
   const due = useDueCount(useNow());
   const history = useMemo(() => ratingHistory(attempts ?? []), [attempts]);
   const themes = useMemo(() => themeStats(attempts ?? []), [attempts]);
@@ -125,6 +128,8 @@ export function Stats() {
         </div>
       </div>
 
+      <BotRecord games={games ?? []} />
+
       <div className="card">
         <div className="mb-3 font-semibold">Theo chủ đề</div>
         {themes.length === 0 ? (
@@ -145,6 +150,49 @@ export function Stats() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function BotRecord({ games }: { games: GameRecord[] }) {
+  const finished = games.filter((g) => g.mode === 'bot' && g.result !== undefined && g.level !== undefined);
+  return (
+    <div className="card">
+      <div className="mb-3 font-semibold">Ván với máy</div>
+      {finished.length === 0 ? (
+        <p className="text-sm text-muted">
+          Chưa có ván nào. <Link className="link" to="/play">Chơi với máy</Link>
+        </p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs text-muted">
+            <tr>
+              <th className="pb-1 font-normal">Cấp độ</th>
+              <th className="pb-1 text-right font-normal">Thắng</th>
+              <th className="pb-1 text-right font-normal">Hòa</th>
+              <th className="pb-1 text-right font-normal">Thua</th>
+            </tr>
+          </thead>
+          <tbody>
+            {BOT_LEVELS.map((l) => {
+              const own = finished.filter((g) => g.level === l.level);
+              if (own.length === 0) return null;
+              const wins = own.filter((g) => g.result === g.playerSide).length;
+              const draws = own.filter((g) => g.result === 'draw').length;
+              return (
+                <tr key={l.level} className="border-t border-white/5">
+                  <td className="py-1">
+                    {l.level}. {l.name}
+                  </td>
+                  <td className="py-1 text-right text-good tabular-nums">{wins}</td>
+                  <td className="py-1 text-right tabular-nums">{draws}</td>
+                  <td className="py-1 text-right text-bad tabular-nums">{own.length - wins - draws}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
