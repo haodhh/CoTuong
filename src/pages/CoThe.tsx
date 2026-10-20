@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Board } from '../components/Board';
 import { GameView, MoveTable } from '../components/GameView';
+import { BackLink } from '../components/scroll';
 import { COTHE_BOOKS, cotheBook } from '../content/cotheBooks';
 import { moveSquares, sideName, type Game, type GameResult } from '../core/game';
 import { lineNotation } from '../core/notation';
@@ -38,46 +39,63 @@ const SORTERS: Record<Sort, (a: CoThe, b: CoThe) => number> = {
   book: () => 0,
 };
 
-/** Loads the given books (every book when `books` is undefined). */
-function useCoThe(books: string[] | undefined) {
-  const key = books ? books.join(',') : '*';
+const message = (e: unknown) => String(e instanceof Error ? e.message : e);
+
+/**
+ * Loads the given books (every book when `books` is undefined). Raising `attempt` tries again
+ * after a failure; until that load answers, nothing (not the old error) is returned.
+ */
+function useCoThe(books: string[] | undefined, attempt: number) {
+  const key = `${books ? books.join(',') : '*'}#${attempt}`;
   const [state, setState] = useState<{ key: string; data?: CoThe[]; error?: string } | null>(null);
-  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
-    loadCoTheBooks(key === '*' ? undefined : key.split(',')).then(
+    loadCoTheBooks(books).then(
       (data) => live && setState({ key, data }),
-      (e) => live && setState({ key, error: String(e instanceof Error ? e.message : e) }),
+      (e) => live && setState({ key, error: message(e) }),
     );
     return () => {
       live = false;
     };
-  }, [key, attempt]);
+    // `key` stands for `books` and `attempt`.
+  }, [key]);
   // Results belong to the books they were loaded for; switching books never shows stale ones.
   const current = state?.key === key ? state : null;
-  const retry = () => {
-    setState(null);
-    setAttempt((a) => a + 1);
-  };
-  return { data: current?.data ?? null, error: current?.error ?? null, retry };
+  return { data: current?.data ?? null, error: current?.error ?? null };
 }
 
-function useCoTheIndex() {
-  const [index, setIndex] = useState<CoTheIndex | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
+function useCoTheIndex(attempt: number) {
+  const [state, setState] = useState<{ attempt: number; index?: CoTheIndex; error?: string } | null>(null);
   useEffect(() => {
     let live = true;
-    setError(null);
     loadCoTheIndex().then(
-      (i) => live && setIndex(i),
-      (e) => live && setError(String(e instanceof Error ? e.message : e)),
+      (index) => live && setState({ attempt, index }),
+      (e) => live && setState({ attempt, error: message(e) }),
     );
     return () => {
       live = false;
     };
   }, [attempt]);
-  return { index, error, retry: () => setAttempt((a) => a + 1) };
+  return { index: state?.index ?? null, error: state?.attempt === attempt ? (state.error ?? null) : null };
+}
+
+/**
+ * One "try again" for everything a page loads. After a failure, following a link (e.g. the
+ * Cờ thế menu in the sidebar) also tries again.
+ */
+function useRetry(error: string | null) {
+  const [attempt, setAttempt] = useState(0);
+  const location = useLocation();
+  const failedAt = useRef<string | null>(null);
+  useEffect(() => {
+    if (!error) failedAt.current = null;
+    else if (failedAt.current === null) failedAt.current = location.key;
+    else if (failedAt.current !== location.key) {
+      failedAt.current = null;
+      setAttempt((a) => a + 1);
+    }
+  }, [error, location.key]);
+  return { attempt, retry: () => setAttempt((a) => a + 1) };
 }
 
 /** A load error with a way to try again (the network may be back). */
@@ -104,7 +122,10 @@ export function CoThePage() {
 }
 
 function CoTheProblem({ id }: { id: string }) {
-  const { data, error, retry } = useCoThe([bookOfId(id)]);
+  const [attempt, setAttempt] = useState(0);
+  const books = useMemo(() => [bookOfId(id)], [id]);
+  const { data, error } = useCoThe(books, attempt);
+  const retry = () => setAttempt((a) => a + 1);
   if (error) return <LoadError message={error} onRetry={retry} />;
   if (!data) return <div className="text-muted">Đang tải cờ thế…</div>;
   const problem = data.find((p) => p.id === id);
@@ -154,7 +175,10 @@ function groupFromParams(params: URLSearchParams): CoTheGroup {
 
 function CoTheList() {
   const profile = useProfile();
-  const { index, error: indexError, retry: retryIndex } = useCoTheIndex();
+  // Set below from both loads, which share one retry (the books wait for the index).
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const { attempt, retry } = useRetry(loadError);
+  const { index, error: indexError } = useCoTheIndex(attempt);
   const results = useDrillResults();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -174,8 +198,11 @@ function CoTheList() {
   const sortParam = params.get('sort');
   const sort: Sort = SORTS.some((s) => s.id === sortParam) ? (sortParam as Sort) : book !== 'all' ? 'book' : 'easy';
 
-  const books = group === 'all' ? undefined : book !== 'all' ? [book] : groupBooks.map((b) => b.id);
-  const { data, error, retry } = useCoThe(books);
+  const bookKey = group === 'all' ? '*' : book !== 'all' ? book : groupBooks.map((b) => b.id).join(',');
+  const books = useMemo(() => (bookKey === '*' ? undefined : bookKey.split(',')), [bookKey]);
+  const { data, error } = useCoThe(books, attempt);
+  const anyError = indexError ?? error;
+  useEffect(() => setLoadError(anyError), [anyError]);
 
   const set = (patch: Record<string, string>) => {
     const next = new URLSearchParams(params);
@@ -210,7 +237,7 @@ function CoTheList() {
     return sort === 'book' ? list : [...list].sort(SORTERS[sort]);
   }, [data, goal, level, status, query, results, sort]);
 
-  if (indexError && !index) return <LoadError message={indexError} onRetry={retryIndex} />;
+  if (indexError && !index) return <LoadError message={indexError} onRetry={retry} />;
   if (!profile || !results || !index) return <div className="text-muted">Đang tải cờ thế…</div>;
   const count = (id: string) => index.books.find((b) => b.id === id)?.count ?? 0;
   const groupCount = (g: CoTheGroup) =>
@@ -540,9 +567,9 @@ function CoThePlayer({ problem, siblings }: { problem: CoThe; siblings: CoThe[] 
 
   return (
     <div>
-      <Link to="/cothe" className="link mb-3 inline-block text-sm">
+      <BackLink to="/cothe" className="link mb-3 inline-block text-sm">
         ← Tất cả cờ thế
-      </Link>
+      </BackLink>
       {showSolution ? (
         <SolutionViewer problem={problem} settings={profile.settings} header={header} />
       ) : (

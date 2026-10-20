@@ -162,6 +162,7 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
   const takeback = () => {
     stopEngine();
     setThinking(false);
+    setEngineError(null);
     let n = 1;
     if (botSide !== undefined) n = turn === playerSide ? 2 : 1;
     for (let i = 0; i < n; i++) game.undo();
@@ -208,10 +209,11 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
-      if (e.key === 'ArrowLeft') setViewPly((p) => Math.max(0, (p ?? game.moves.length) - 1));
-      if (e.key === 'ArrowRight')
-        setViewPly((p) => (p === null || p + 1 >= game.moves.length ? null : p + 1));
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      // Showing the last position is the live board (null), never a frozen copy of it.
+      const view = (ply: number) => (Math.max(0, ply) >= game.moves.length ? null : Math.max(0, ply));
+      if (e.key === 'ArrowLeft') setViewPly((p) => view((p ?? game.moves.length) - 1));
+      if (e.key === 'ArrowRight') setViewPly((p) => (p === null ? null : view(p + 1)));
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -325,20 +327,37 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
   );
 }
 
+/**
+ * The bar keeps one height while the bot thinks (the board must not move under the player's
+ * finger): thinking is shown by the pulsing dot, and captured pieces are grouped with a count.
+ */
 function PlayerBar(props: { label: string; side: Side; captured: number[]; active: boolean; thinking: boolean; style: Settings['pieceStyle'] }) {
+  const groups: { piece: number; n: number }[] = [];
+  for (const p of props.captured) {
+    const g = groups.find((x) => x.piece === p);
+    if (g) g.n++;
+    else groups.push({ piece: p, n: 1 });
+  }
+  const dot = props.side === RED ? 'bg-[#c0161c]' : 'bg-stone-900 ring-1 ring-stone-500';
   return (
     <div className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${props.active ? 'bg-panel-2' : 'bg-panel/60'}`}>
-      <span className={`h-3 w-3 rounded-full ${props.side === RED ? 'bg-[#c0161c]' : 'bg-stone-900 ring-1 ring-stone-500'}`} />
-      <span className="font-semibold">{props.label}</span>
-      {props.thinking && <span className="animate-pulse text-muted">đang nghĩ…</span>}
-      <span className="ml-auto flex flex-wrap justify-end gap-0.5">
-        {props.captured.map((p, i) => (
+      <span className="relative flex h-3 w-3 shrink-0">
+        {props.thinking && <span className={`absolute inset-0 animate-ping rounded-full opacity-75 ${props.side === RED ? 'bg-[#f87171]' : 'bg-stone-300'}`} />}
+        <span className={`relative h-3 w-3 rounded-full ${dot}`} />
+      </span>
+      <span className="min-w-0 truncate font-semibold">
+        {props.label}
+        {props.thinking && <span className="sr-only"> đang nghĩ…</span>}
+      </span>
+      <span className="ml-auto flex shrink-0 justify-end gap-0.5">
+        {groups.map(({ piece, n }) => (
           <span
-            key={i}
-            title={PIECE_NAME[typeOf(p)]}
-            className={`flex h-5 min-w-5 items-center justify-center rounded-full bg-[#f3dfb6] px-1 text-[11px] font-bold ${sideOf(p) === RED ? 'text-[#c0161c]' : 'text-stone-900'}`}
+            key={piece}
+            title={n > 1 ? `${PIECE_NAME[typeOf(piece)]} ×${n}` : PIECE_NAME[typeOf(piece)]}
+            className={`flex h-5 min-w-5 items-center justify-center rounded-full bg-[#f3dfb6] px-1 text-[11px] font-bold ${sideOf(piece) === RED ? 'text-[#c0161c]' : 'text-stone-900'}`}
           >
-            {props.style === 'han' ? HAN_SHORT[sideOf(p)][typeOf(p)] : PIECE_NAME[typeOf(p)][0]}
+            {props.style === 'han' ? HAN_SHORT[sideOf(piece)][typeOf(piece)] : PIECE_NAME[typeOf(piece)][0]}
+            {n > 1 && <span className="ml-px text-[9px] leading-none">{n}</span>}
           </span>
         ))}
       </span>

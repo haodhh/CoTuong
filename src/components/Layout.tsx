@@ -4,6 +4,7 @@ import { cotheBook } from '../content/cotheBooks';
 import { bookOfId } from '../data/cotheData';
 import { useDueCount } from '../data/store';
 import { ErrorBoundary } from './ErrorBoundary';
+import { useScrollRestoration } from './scroll';
 
 interface NavItem {
   to: string;
@@ -86,6 +87,7 @@ function useCoTheGroup(): string | null {
 
 export function Layout() {
   const location = useLocation();
+  useScrollRestoration();
   const due = useDueCount(useNow()) ?? 0;
   const cotheGroup = useCoTheGroup();
   const linkClass = ({ isActive }: { isActive: boolean }) =>

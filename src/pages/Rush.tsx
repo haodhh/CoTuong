@@ -110,16 +110,22 @@ function RushRun({
     return queue.current[i];
   };
 
+  /** Only the latest call of show() may change the screen. */
+  const showRun = useRef(0);
   const show = async (i: number) => {
+    const run = ++showRun.current;
     try {
       const p = await fetchAt(i);
       fetchAt(i + 1).catch(() => {
         // Prefetch only: a failure is retried when that puzzle is needed.
       });
       if (!p) throw new Error('Hết puzzle phù hợp.');
-      if (!finished.current) setPuzzle(p);
+      if (!finished.current && run === showRun.current) setPuzzle(p);
     } catch (e) {
+      if (run !== showRun.current) return;
       const offline = e instanceof TypeError || !navigator.onLine;
+      // The finished puzzle must not come back as a new one when the player tries again.
+      setPuzzle(null);
       setError(offline ? 'Mất kết nối mạng, không tải được puzzle tiếp theo.' : e instanceof Error ? e.message : String(e));
     }
   };
@@ -201,6 +207,12 @@ function RushRun({
   if (error && !over) {
     return (
       <div className="card mx-auto max-w-lg text-center">
+        {/* The clock keeps running, and still ends the run, while the puzzle cannot load. */}
+        {endsAt && (
+          <div className="mb-2 flex justify-center">
+            <RushClock endsAt={endsAt} onTimeout={end} />
+          </div>
+        )}
         <div className="font-semibold text-bad">{error}</div>
         <div className="mt-1 text-sm text-muted">Điểm hiện tại: {log.filter((e) => e.success).length}</div>
         <div className="mt-3 flex justify-center gap-2">

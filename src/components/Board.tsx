@@ -138,8 +138,15 @@ export function Board(props: BoardProps) {
     return false;
   };
 
+  // A board that takes moves or taps (on either side's turn); not a picture inside a link.
+  const interactive = props.onMove !== undefined || props.onSquareClick !== undefined;
+
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (e.button !== 0) return;
+    // The touch's click is cancelled below, so a tap would no longer take the focus away from
+    // a text field (and close the phone's keyboard). Do it here.
+    const focused = document.activeElement;
+    if (interactive && focused instanceof HTMLElement && focused !== document.body) focused.blur();
     const { x, y } = svgPoint(e);
     const sq = fromPoint(x, y, orientation);
     if (!sq) {
@@ -195,8 +202,9 @@ export function Board(props: BoardProps) {
         onPointerUp={onPointerUp}
         onPointerCancel={() => setDrag(null)}
         // Moves are handled with pointer events. Cancelling the touch's compatibility click
-        // keeps a tap from also pressing a button if the page moved under the finger.
-        onTouchEnd={(e) => e.cancelable && e.preventDefault()}
+        // keeps a tap from also pressing a button if the page moved under the finger. A
+        // read-only board (a picture inside a link) keeps its click.
+        onTouchEnd={(e) => interactive && e.cancelable && e.preventDefault()}
         role="img"
         aria-label="Bàn cờ tướng"
       >
@@ -282,6 +290,10 @@ export function Board(props: BoardProps) {
             <PieceShape piece={pieceAt(drag.from)} style={style} />
           </g>
         )}
+        {/* Every touch lands on this layer, which is never re-rendered away. (A captured piece's
+            element is removed as soon as the move is made on pointerdown; touch events aimed at
+            it would then never reach onTouchEnd, and the browser would still send the click.) */}
+        <rect width={W} height={H} fill="none" pointerEvents="all" />
       </svg>
     </div>
   );

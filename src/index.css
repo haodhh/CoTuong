@@ -15,6 +15,9 @@
 
 html,
 body {
+  /* No scroll anchoring: a message appearing above the board must not slide the board away
+     from under the player's finger. */
+  overflow-anchor: none;
   background: var(--color-bg);
   color: #f5f5f4;
   -webkit-tap-highlight-color: transparent;

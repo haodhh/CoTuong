@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Board } from '../components/Board';
 import { GameView } from '../components/GameView';
+import { BackLink } from '../components/scroll';
 import { DRILLS, type Drill } from '../content/drills';
 import type { Game, GameResult } from '../core/game';
 import { Position, type Side } from '../core/xiangqi';
@@ -111,9 +112,9 @@ function DrillPlayer({ drill }: { drill: Drill }) {
 
   return (
     <div>
-      <Link to="/endgames" className="link mb-3 inline-block text-sm">
+      <BackLink to="/endgames" className="link mb-3 inline-block text-sm">
         ← Tất cả bài tàn cuộc
-      </Link>
+      </BackLink>
       <GameView
         key={attempt}
         record={record}

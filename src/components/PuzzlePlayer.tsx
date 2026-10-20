@@ -38,6 +38,8 @@ export function PuzzlePlayer({ puzzle, settings, rush, onResult, onFinished, onN
   const [syncKey, setSyncKey] = useState(0);
   const [hintLevel, setHintLevel] = useState(0);
   const [viewPly, setViewPly] = useState<number | null>(null);
+  // "Next" gets the focus for the keyboard (Enter), without scrolling the board out of view on a phone.
+  const focusNext = useCallback((el: HTMLButtonElement | null) => el?.focus({ preventScroll: true }), []);
 
   const timers = useRef<number[]>([]);
   const reported = useRef(false);
@@ -245,7 +247,11 @@ export function PuzzlePlayer({ puzzle, settings, rush, onResult, onFinished, onN
         {finished && !rush && (
           <>
             {onNext && (
-              <button className="btn btn-primary text-lg" onClick={onNext} autoFocus>
+              <button
+                className="btn btn-primary text-lg"
+                onClick={onNext}
+                ref={focusNext}
+              >
                 {nextLabel ?? 'Puzzle tiếp theo →'}
               </button>
             )}

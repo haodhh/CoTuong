@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { PuzzleTrainer } from '../components/PuzzleTrainer';
+import { BackLink } from '../components/scroll';
 import { themeStats, weakestThemes } from '../core/stats';
 import { THEME_GROUPS, THEMES, themeName } from '../core/themes';
 import { loadIndex, type PuzzleIndex } from '../data/puzzleData';
@@ -72,9 +73,9 @@ export function ThemePuzzles() {
   const { theme = '' } = useParams();
   return (
     <div>
-      <Link to="/themes" className="link mb-3 inline-block text-sm">
+      <BackLink to="/themes" className="link mb-3 inline-block text-sm">
         ← Tất cả chủ đề
-      </Link>
+      </BackLink>
       <PuzzleTrainer key={theme} mode="theme" theme={theme} />
     </div>
   );

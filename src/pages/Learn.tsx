@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Board, type Shape } from '../components/Board';
+import { BackLink } from '../components/scroll';
 import { LESSONS, type Lesson, type LessonStep } from '../content/lessons';
 import { legalDests, moveSquares } from '../core/game';
 import { MateSolver } from '../core/mate';
@@ -62,9 +63,9 @@ function LessonPlayer({ lesson }: { lesson: Lesson }) {
 
   return (
     <div>
-      <Link to="/learn" className="link mb-3 inline-block text-sm">
+      <BackLink to="/learn" className="link mb-3 inline-block text-sm">
         ← Tất cả bài học
-      </Link>
+      </BackLink>
       {finished ? (
         <div className="card mx-auto max-w-lg text-center">
           <div className="text-5xl">🎉</div>

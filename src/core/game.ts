@@ -1,5 +1,26 @@
 import { lineNotation } from './notation';
-import { BLACK, Position, REP_LOSS, REP_WIN, RED, START_FEN, moveToUci, uciToMove, type Side } from './xiangqi';
+import {
+  ADVISOR,
+  BLACK,
+  ELEPHANT,
+  HOME,
+  IN_PALACE,
+  KING,
+  PAWN,
+  Position,
+  REP_LOSS,
+  REP_WIN,
+  RED,
+  SQUARES,
+  START_FEN,
+  fileOf,
+  moveToUci,
+  rankOf,
+  sideOf,
+  typeOf,
+  uciToMove,
+  type Side,
+} from './xiangqi';
 
 export type ResultReason =
   | 'checkmate'
@@ -50,6 +71,41 @@ export function gameStatus(pos: Position): GameResult | null {
   }
   if (pos.halfmove >= 120) return { winner: null, reason: 'moveLimit' };
   if (!pos.hasAttackers(RED) && !pos.hasAttackers(BLACK)) return { winner: null, reason: 'material' };
+  return null;
+}
+
+const TYPE_NAME = ['', 'Tướng', 'Sĩ', 'Tượng', 'Mã', 'Xe', 'Pháo', 'Tốt'];
+const MAX_COUNT = [0, 1, 2, 2, 2, 2, 2, 5];
+
+/**
+ * Why `pos` cannot come up in a game (wrong number of pieces, a piece on a point it can never
+ * reach, or the side that just moved left in check), or null if it can.
+ */
+export function positionProblem(pos: Position): string | null {
+  const count = [new Array(8).fill(0), new Array(8).fill(0)];
+  for (const sq of SQUARES) {
+    const piece = pos.board[sq];
+    if (!piece) continue;
+    const side = sideOf(piece);
+    const type = typeOf(piece);
+    count[side][type]++;
+    const x = fileOf(sq);
+    // Rows counted from the side's own back rank.
+    const y = side === RED ? rankOf(sq) : 9 - rankOf(sq);
+    const where = `${TYPE_NAME[type]} ${sideName(side)} không thể ở điểm này.`;
+    if (type === KING && !(IN_PALACE[sq] && HOME[side][sq])) return `Tướng ${sideName(side)} nằm ngoài cung.`;
+    if (type === ADVISOR && !(IN_PALACE[sq] && HOME[side][sq] && (x + y) % 2 === 1)) return where;
+    if (type === ELEPHANT && !(HOME[side][sq] && x % 2 === 0 && y % 2 === 0 && (x / 2 + y / 2) % 2 === 1)) return where;
+    if (type === PAWN && (y < 3 || (y < 5 && x % 2 === 1))) return where;
+  }
+  for (const side of [RED, BLACK] as Side[]) {
+    if (count[side][KING] !== 1) return `Bên ${sideName(side)} phải có đúng một Tướng.`;
+    for (let type = 2; type < 8; type++) {
+      if (count[side][type] > MAX_COUNT[type]) return `Bên ${sideName(side)} có quá ${MAX_COUNT[type]} quân ${TYPE_NAME[type]}.`;
+    }
+  }
+  const other = (1 - pos.turn) as Side;
+  if (pos.isInCheck(other)) return `Bên ${sideName(other)} đang bị chiếu mà lại không đến lượt đi.`;
   return null;
 }
 

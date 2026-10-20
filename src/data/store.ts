@@ -1,12 +1,16 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { Game } from '../core/game';
 import { decayRd, updateGlicko } from '../core/glicko2';
 import type { Puzzle } from '../core/puzzle';
 import { gradeFor, reviveCard, scheduleReview } from '../core/srs';
 import {
   db,
   type Attempt,
+  type BoardTheme,
   type DrillResult,
   type GameRecord,
+  type LessonProgress,
+  type PieceStyle,
   type Profile,
   type PuzzleMode,
   type ReviewCard,
@@ -40,11 +44,31 @@ export function defaultProfile(now = Date.now()): Profile {
 }
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isStr = (v: unknown): v is string => typeof v === 'string';
+const BOARD_THEMES: BoardTheme[] = ['wood', 'light', 'green', 'dark'];
+const PIECE_STYLES: PieceStyle[] = ['han', 'viet'];
+const PUZZLE_MODES: PuzzleMode[] = ['rated', 'theme', 'rush', 'review', 'daily'];
+
+/** Settings with every unknown or malformed value replaced by its default. */
+export function normalizeSettings(s: Partial<Settings> | undefined): Settings {
+  const d = DEFAULT_SETTINGS;
+  const v: Record<string, unknown> = s && typeof s === 'object' ? s : {};
+  const bool = (k: 'sound' | 'coordinates' | 'animation') => (typeof v[k] === 'boolean' ? (v[k] as boolean) : d[k]);
+  return {
+    boardTheme: BOARD_THEMES.includes(v.boardTheme as BoardTheme) ? (v.boardTheme as BoardTheme) : d.boardTheme,
+    pieceStyle: PIECE_STYLES.includes(v.pieceStyle as PieceStyle) ? (v.pieceStyle as PieceStyle) : d.pieceStyle,
+    sound: bool('sound'),
+    coordinates: bool('coordinates'),
+    animation: bool('animation'),
+    difficulty: isNum(v.difficulty) ? Math.max(-600, Math.min(600, v.difficulty)) : d.difficulty,
+    dailyGoal: isNum(v.dailyGoal) && v.dailyGoal >= 1 ? Math.round(v.dailyGoal) : d.dailyGoal,
+  };
+}
 
 /** Fills in anything missing or malformed (old versions, edited backups) with defaults. */
 export function normalizeProfile(p: Partial<Profile> | undefined): Profile {
   const d = defaultProfile();
-  if (!p) return d;
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return d;
   const r = p.rating;
   const rating = r && isNum(r.rating) && isNum(r.rd) && isNum(r.vol) ? r : d.rating;
   return {
@@ -55,7 +79,7 @@ export function normalizeProfile(p: Partial<Profile> | undefined): Profile {
     ratedAt: isNum(p.ratedAt) ? p.ratedAt : d.ratedAt,
     createdAt: isNum(p.createdAt) ? p.createdAt : d.createdAt,
     onboarded: typeof p.onboarded === 'boolean' ? p.onboarded : d.onboarded,
-    settings: { ...DEFAULT_SETTINGS, ...(p.settings ?? {}) },
+    settings: normalizeSettings(p.settings),
   };
 }
 
@@ -274,21 +298,68 @@ export async function importBackup(json: string) {
     throw new Error('File không đọc được (không phải JSON).');
   }
   if (!data || data.app !== 'cotuong-trainer') throw new Error('File không phải bản sao lưu của ứng dụng này.');
-  const list = <T,>(v: T[] | undefined): T[] => (Array.isArray(v) ? v : []);
-  // Check everything before clearing the current data, so a bad file changes nothing.
-  const reviews = list(data.reviews)
-    .filter((r) => r && r.puzzleId && r.puzzle && r.card)
-    .map((r) => ({ ...r, card: reviveCard(r.card) }));
+  // Check everything before clearing the current data, so a bad file changes nothing. Records
+  // that the app could not show are left out (and counted), the others get their defaults.
+  let skipped = 0;
+  const clean = <T,>(v: unknown, fix: (x: Record<string, unknown>) => T | null): T[] => {
+    const out: T[] = [];
+    for (const x of Array.isArray(v) ? v : []) {
+      const r = x && typeof x === 'object' ? fix(x as Record<string, unknown>) : null;
+      if (r) out.push(r);
+      else skipped++;
+    }
+    return out;
+  };
+  const reviews = clean<ReviewCard>(data.reviews, (r) =>
+    isStr(r.puzzleId) && r.puzzle && r.card ? ({ ...r, card: reviveCard(r.card as ReviewCard['card']) } as ReviewCard) : null,
+  );
+  const attempts = clean<Attempt>(data.attempts, (a) =>
+    isStr(a.puzzleId) && isNum(a.ts)
+      ? ({
+          ...a,
+          mode: PUZZLE_MODES.includes(a.mode as PuzzleMode) ? a.mode : 'rated',
+          success: a.success === true,
+          usedHint: a.usedHint === true,
+          timeMs: isNum(a.timeMs) ? a.timeMs : 0,
+          puzzleRating: isNum(a.puzzleRating) ? a.puzzleRating : 0,
+          themes: Array.isArray(a.themes) ? a.themes.filter(isStr) : [],
+        } as Attempt)
+      : null,
+  );
+  const rushRuns = clean<RushRun>(data.rushRuns, (r) =>
+    ['3m', '5m', 'survival'].includes(r.mode as string) && isNum(r.score) && isNum(r.ts)
+      ? ({ ...r, puzzles: Array.isArray(r.puzzles) ? r.puzzles : [] } as RushRun)
+      : null,
+  );
+  const games = clean<GameRecord>(data.games, (g) => {
+    if (!isStr(g.startFen) || !Array.isArray(g.moves) || (g.mode !== 'bot' && g.mode !== 'local') || !isNum(g.ts)) return null;
+    try {
+      // Only games the board can replay.
+      const replay = new Game(g.startFen);
+      if (!g.moves.every((m) => isStr(m) && replay.play(m))) return null;
+    } catch {
+      return null;
+    }
+    return { ...g, updatedAt: isNum(g.updatedAt) ? g.updatedAt : g.ts } as GameRecord;
+  });
+  const drills = clean<DrillResult>(data.drills, (d) =>
+    isStr(d.drillId) && isNum(d.stars) ? ({ ...d, bestMoves: isNum(d.bestMoves) ? d.bestMoves : 0, ts: isNum(d.ts) ? d.ts : 0 } as DrillResult) : null,
+  );
+  const lessons = clean<LessonProgress>(data.lessons, (l) =>
+    isStr(l.lessonId) ? ({ ...l, completedAt: isNum(l.completedAt) ? l.completedAt : 0 } as LessonProgress) : null,
+  );
   await db.transaction('rw', TABLES(), async () => {
     await Promise.all(TABLES().map((t) => t.clear()));
     if (data.profile) await db.profile.put(normalizeProfile(data.profile));
-    await db.attempts.bulkAdd(list(data.attempts));
-    await db.reviews.bulkAdd(reviews);
-    await db.rushRuns.bulkAdd(list(data.rushRuns));
-    await db.games.bulkAdd(list(data.games));
-    await db.drills.bulkAdd(list(data.drills));
-    await db.lessons.bulkAdd(list(data.lessons));
+    // put, not add: a record repeated in the file (same id) is kept once instead of failing.
+    await db.attempts.bulkPut(attempts);
+    await db.reviews.bulkPut(reviews);
+    await db.rushRuns.bulkPut(rushRuns);
+    await db.games.bulkPut(games);
+    await db.drills.bulkPut(drills);
+    await db.lessons.bulkPut(lessons);
   });
+  return { skipped };
 }
 
 export async function resetAll() {

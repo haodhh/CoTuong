@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, normalizeProfile } from './store';
+import { DEFAULT_SETTINGS, normalizeProfile, normalizeSettings } from './store';
 
 describe('normalizeProfile', () => {
   it('fills a missing or malformed rating and settings from defaults', () => {
@@ -19,5 +19,18 @@ describe('normalizeProfile', () => {
     const p = normalizeProfile({ id: 'me', rating, ratedAt: 5, createdAt: 1, onboarded: true, settings: DEFAULT_SETTINGS });
     expect(p.rating).toEqual(rating);
     expect(p.ratedAt).toBe(5);
+  });
+});
+
+describe('normalizeSettings', () => {
+  it('replaces unknown or malformed values with defaults', () => {
+    const s = normalizeSettings({ boardTheme: 'neon', pieceStyle: 'emoji', dailyGoal: 'x', sound: 'yes', difficulty: 300 } as never);
+    expect(s).toEqual({ ...DEFAULT_SETTINGS, difficulty: 300 });
+    expect(normalizeSettings(undefined)).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('keeps valid values', () => {
+    const s = { boardTheme: 'dark', pieceStyle: 'viet', sound: false, coordinates: false, animation: false, difficulty: -300, dailyGoal: 50 } as const;
+    expect(normalizeSettings(s)).toEqual(s);
   });
 });

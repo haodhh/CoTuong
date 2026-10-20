@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { Board, type Shape } from '../components/Board';
-import { legalDests, moveSquares, sideName } from '../core/game';
+import { Game, legalDests, moveSquares, positionProblem, sideName } from '../core/game';
 import { lineNotation, moveNotation } from '../core/notation';
 import { CLASS_INFO, reviewGame, sideAccuracy, winChance, type MoveReview, type PositionEval } from '../core/review';
 import { playSound } from '../core/sound';
@@ -12,14 +12,16 @@ import { EngineCancelled, think, stopEngine, type EngineInfo } from '../engine/c
 
 const REVIEW_MS = 350;
 
-/** A normalised FEN with both kings, or null if `fen` cannot be used. */
-function validFen(fen: string): string | null {
+/** The normalised FEN, or why `fen` cannot be opened. */
+function checkFen(fen: string): { fen: string } | { error: string } {
+  let p: Position;
   try {
-    const p = new Position(fen);
-    return p.kings[RED] && p.kings[BLACK] ? p.fen() : null;
+    p = new Position(fen);
   } catch {
-    return null;
+    return { error: 'FEN không hợp lệ.' };
   }
+  const problem = positionProblem(p);
+  return problem ? { error: `Thế cờ không hợp lệ: ${problem}` } : { fen: p.fen() };
 }
 
 export function Analysis() {
@@ -29,7 +31,10 @@ export function Analysis() {
   const fenParam = params.get('fen');
   const [record, setRecord] = useState<GameRecord | null>(null);
   // A link with a broken ?fen= opens the normal start position instead of failing.
-  const [startFen, setStartFen] = useState(() => (fenParam && validFen(fenParam)) || START_FEN);
+  const [startFen, setStartFen] = useState(() => {
+    const c = fenParam ? checkFen(fenParam) : null;
+    return c && 'fen' in c ? c.fen : START_FEN;
+  });
   const [moves, setMoves] = useState<string[]>([]);
   const [ply, setPly] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -38,26 +43,80 @@ export function Analysis() {
   const [evals, setEvals] = useState<(PositionEval | undefined)[]>([]);
   const [reviewing, setReviewing] = useState<number | null>(null);
   const [fenInput, setFenInput] = useState('');
-  const [error, setError] = useState<string | null>(() => (fenParam && !validFen(fenParam) ? 'FEN trong liên kết không hợp lệ.' : null));
+  const [error, setError] = useState<string | null>(null);
+  /** A link (?fen= or ?game=) that could not be opened; shown at the top, where a phone shows it. */
+  const [linkError, setLinkError] = useState<string | null>(() => {
+    const c = fenParam ? checkFen(fenParam) : null;
+    return c && 'error' in c ? `Không mở được thế cờ trong liên kết. ${c.error}` : null;
+  });
   const [engineError, setEngineError] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   /** Incremented to stop the running review (Dừng, a new board, another game). */
   const reviewRun = useRef(0);
 
+  /** Opens a position with no moves (a new board, a pasted FEN, a ?fen= link). */
+  const openPosition = (fen: string) => {
+    reviewRun.current++;
+    setReviewing(null);
+    setReviewError(null);
+    setRecord(null);
+    setStartFen(fen);
+    setMoves([]);
+    setEvals([]);
+    setPly(0);
+    setError(null);
+    setLinkError(null);
+  };
+
   useEffect(() => {
     if (!gameId) return;
-    void getGame(gameId).then((g) => {
-      if (!g) return;
-      // A review of the previous game must not write into this one.
-      reviewRun.current++;
-      setReviewing(null);
-      setEvals([]);
-      setRecord(g);
-      setStartFen(g.startFen);
-      setMoves(g.moves);
-      setPly(g.moves.length);
-      setFlipped(g.mode === 'bot' && g.playerSide === BLACK);
-    });
+    let live = true;
+    getGame(gameId).then(
+      (g) => {
+        if (!live) return;
+        if (!g || typeof g.startFen !== 'string' || !Array.isArray(g.moves)) {
+          setLinkError(`Không mở được ván #${gameId}.`);
+          return;
+        }
+        let moves: string[];
+        try {
+          // Only legal moves are kept, so a damaged record cannot break the board.
+          const replay = new Game(g.startFen);
+          if (g.moves.some((m) => typeof m !== 'string' || !replay.play(m))) throw new Error('bad move');
+          moves = replay.moves;
+        } catch {
+          setLinkError(`Ván #${gameId} bị hỏng, không mở được.`);
+          return;
+        }
+        // A review of the previous game must not write into this one.
+        reviewRun.current++;
+        setReviewing(null);
+        setReviewError(null);
+        setEvals([]);
+        setLinkError(null);
+        setRecord(g);
+        setStartFen(g.startFen);
+        setMoves(moves);
+        setPly(moves.length);
+        setFlipped(g.mode === 'bot' && g.playerSide === BLACK);
+      },
+      () => live && setLinkError(`Không mở được ván #${gameId}.`),
+    );
+    return () => {
+      live = false;
+    };
   }, [gameId]);
+
+  // A ?fen= link opened while the page is already showing (the first one is read above).
+  const shownFenParam = useRef(fenParam);
+  useEffect(() => {
+    if (fenParam === shownFenParam.current) return;
+    shownFenParam.current = fenParam;
+    if (!fenParam) return;
+    const c = checkFen(fenParam);
+    if ('fen' in c) openPosition(c.fen);
+    else setLinkError(`Không mở được thế cờ trong liên kết. ${c.error}`);
+  }, [fenParam]);
 
   const positions = useMemo(() => {
     const pos = new Position(startFen);
@@ -138,6 +197,7 @@ export function Analysis() {
     const run = ++reviewRun.current;
     const live = () => reviewRun.current === run;
     setEngineOn(false);
+    setReviewError(null);
     const out: PositionEval[] = [];
     for (let i = 0; i <= moves.length; i++) {
       if (!live()) return;
@@ -155,7 +215,8 @@ export function Analysis() {
         const sign = toMove === RED ? 1 : -1;
         out.push({ cp: r.score * sign, mate: r.mate !== undefined ? r.mate * sign : undefined, best: r.move ?? undefined });
       } catch (e) {
-        if (live() && !(e instanceof EngineCancelled)) setEngineError(e instanceof Error ? e.message : String(e));
+        // Shown in the review card: the engine panel is closed during a review.
+        if (live() && !(e instanceof EngineCancelled)) setReviewError(e instanceof Error ? e.message : String(e));
         break;
       }
       if (!live()) return;
@@ -167,19 +228,10 @@ export function Analysis() {
   };
 
   const loadFen = () => {
-    try {
-      const p = new Position(fenInput);
-      if (!p.kings[RED] || !p.kings[BLACK]) throw new Error('Thiếu Tướng.');
-      stopReview();
-      setRecord(null);
-      setStartFen(p.fen());
-      setMoves([]);
-      setEvals([]);
-      setPly(0);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    const c = checkFen(fenInput);
+    setLinkError(null);
+    if ('fen' in c) openPosition(c.fen);
+    else setError(c.error);
   };
 
   const currentEval = evals[ply];
@@ -188,13 +240,25 @@ export function Analysis() {
   const best = moveSquares(bestUci);
   if (best) shapes.push({ from: best[0], to: best[1], color: engineOn ? 'blue' : 'green' });
 
-  const redScore: PositionEval | null = engineOn && info ? toRed(info, pos.turn) : (currentEval ?? null);
+  const over = !pos.hasLegalMove();
+  // A finished game shows the result itself, not a neutral bar.
+  const redScore: PositionEval | null = over ? { cp: 0, mate: pos.turn === RED ? -1 : 1 } : engineOn && info ? toRed(info, pos.turn) : (currentEval ?? null);
   const orientation: Side = flipped ? BLACK : RED;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+      {linkError && (
+        <div className="flex items-start justify-between gap-2 rounded-xl bg-bad/20 p-3 text-sm lg:col-span-2">
+          <span>
+            <b className="text-bad">⚠</b> {linkError}
+          </span>
+          <button className="btn btn-sm shrink-0" onClick={() => setLinkError(null)} aria-label="Đóng">
+            ✕
+          </button>
+        </div>
+      )}
       <div className="mx-auto flex w-full max-w-[min(100%,calc((100vh-110px)*0.88))] gap-2 self-start">
-        <EvalBar value={redScore} flipped={flipped} />
+        <EvalBar value={redScore} flipped={flipped} label={over ? `${sideName((1 - pos.turn) as Side)} thắng` : undefined} />
         <div className="flex-1">
           <Board
             fen={positions[ply]}
@@ -276,8 +340,16 @@ export function Analysis() {
               </div>
             ) : (
               <>
+                {reviewError && (
+                  <div className="mb-2 rounded-lg bg-bad/20 p-2 text-sm">
+                    <div className="font-semibold text-bad">⚠ Chưa đánh giá xong: {reviewError}</div>
+                    <button className="btn btn-sm mt-2" onClick={() => window.location.reload()}>
+                      Tải lại trang
+                    </button>
+                  </div>
+                )}
                 <button className="btn btn-primary w-full" onClick={runReview}>
-                  📊 Đánh giá cả ván
+                  {reviewError ? '↻ Thử lại' : '📊 Đánh giá cả ván'}
                 </button>
                 <p className="mt-2 text-xs text-muted">Máy chấm từng nước, chỉ ra nước sai và độ chính xác của mỗi bên (khoảng {Math.ceil(((moves.length + 1) * REVIEW_MS) / 1000)} giây).</p>
               </>
@@ -309,14 +381,7 @@ export function Analysis() {
             </button>
             <button
               className="btn btn-sm"
-              onClick={() => {
-                stopReview();
-                setRecord(null);
-                setStartFen(START_FEN);
-                setMoves([]);
-                setEvals([]);
-                setPly(0);
-              }}
+              onClick={() => openPosition(START_FEN)}
             >
               Bàn cờ mới
             </button>
@@ -341,10 +406,10 @@ export function formatEval(e: PositionEval): string {
   return e.cp > 0 ? `+${v}` : v;
 }
 
-function EvalBar({ value, flipped }: { value: PositionEval | null; flipped: boolean }) {
+function EvalBar({ value, flipped, label }: { value: PositionEval | null; flipped: boolean; label?: string }) {
   const red = value ? winChance(value) : 50;
   return (
-    <div className={`relative flex w-4 shrink-0 overflow-hidden rounded bg-stone-900 sm:w-5 ${flipped ? 'flex-col' : 'flex-col-reverse'}`} title={value ? formatEval(value) : ''}>
+    <div className={`relative flex w-4 shrink-0 overflow-hidden rounded bg-stone-900 sm:w-5 ${flipped ? 'flex-col' : 'flex-col-reverse'}`} title={label ?? (value ? formatEval(value) : '')}>
       <div className="bg-[#c0161c] transition-all duration-500" style={{ height: `${red}%` }} />
     </div>
   );

@@ -37,8 +37,8 @@ export function SettingsPage() {
 
   const restore = async (file: File) => {
     try {
-      await importBackup(await file.text());
-      setMessage('Đã khôi phục dữ liệu.');
+      const { skipped } = await importBackup(await file.text());
+      setMessage(skipped ? `Đã khôi phục dữ liệu (bỏ qua ${skipped} mục bị hỏng).` : 'Đã khôi phục dữ liệu.');
     } catch (e) {
       setMessage(`Lỗi: ${e instanceof Error ? e.message : String(e)}`);
     }

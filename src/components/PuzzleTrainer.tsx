@@ -26,6 +26,8 @@ export function PuzzleTrainer({ mode, theme }: { mode: PuzzleMode; theme?: strin
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<Result[]>([]);
   const seen = useRef<Set<string> | null>(null);
+  /** Puzzles shown in this round; once every puzzle has been tried, they come back in turn. */
+  const round = useRef<Set<string>>(new Set());
   const current = useRef<string | undefined>(undefined);
   const profileRef = useRef(profile);
   profileRef.current = profile;
@@ -37,9 +39,15 @@ export function PuzzleTrainer({ mode, theme }: { mode: PuzzleMode; theme?: strin
       setError(null);
       seen.current ??= await attemptedIds();
       const target = currentRating(p).rating + p.settings.difficulty;
-      const next = await findPuzzle({ target, exclude: seen.current, theme, avoid: current.current });
+      let next = await findPuzzle({ target, exclude: seen.current, theme, avoid: round.current });
+      if (!next && round.current.size > 1) {
+        // Every puzzle was shown this round: start a new one, without repeating the one on screen.
+        round.current = new Set(current.current ? [current.current] : []);
+        next = await findPuzzle({ target, exclude: seen.current, theme, avoid: round.current });
+      }
       if (!next) throw new Error(theme ? 'Chủ đề này không còn puzzle nào khác.' : 'Không tìm thấy puzzle phù hợp.');
       seen.current.add(next.id);
+      round.current.add(next.id);
       current.current = next.id;
       setPuzzle(next);
     } catch (e) {
