@@ -98,7 +98,7 @@ export function Home() {
       <section>
         <h2 className="mb-3 text-lg font-bold">Luyện tập</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Tile to="/cothe" icon="🏯" title="Cờ thế" desc="Gần 1.000 thế cờ cổ: Thích tình nhã thú, Giang hồ bài cục…" />
+          <Tile to="/cothe" icon="🏯" title="Cờ thế" desc="Hơn 6.500 thế cờ từ cổ phổ và sách hiện đại: Thích tình nhã thú, Giang hồ bài cục…" />
           <Tile to="/endgames" icon="🏁" title="Tàn cuộc" desc="Thực hành thắng các thế tàn cuộc cơ bản với máy" />
           <Tile to="/learn" icon="🎓" title="Học luật" desc="Cách đi từng quân, luật chiếu, các thế sát cơ bản" />
           <Tile to="/local" icon="👥" title="Hai người" desc="Chơi với bạn trên cùng thiết bị" />

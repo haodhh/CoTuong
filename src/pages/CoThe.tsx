@@ -6,7 +6,7 @@ import { COTHE_BOOKS, cotheBook } from '../content/cotheBooks';
 import { moveSquares, sideName, type Game, type GameResult } from '../core/game';
 import { lineNotation } from '../core/notation';
 import { Position, uciToMove, type Side } from '../core/xiangqi';
-import { loadCoThe, playerMoves, type CoThe } from '../data/cotheData';
+import { bookOfId, loadAllCoThe, loadCoTheBook, loadCoTheIndex, playerMoves, type CoThe, type CoTheIndex } from '../data/cotheData';
 import type { DrillResult, GameRecord, Settings } from '../data/db';
 import { saveDrillResult, useDrillResults, useProfile } from '../data/store';
 
@@ -22,23 +22,51 @@ const LENGTHS: { id: Length; label: string; test: (n: number) => boolean }[] = [
   { id: 'long', label: 'Dài (> 15 nước)', test: (n) => n > 15 },
 ];
 
-function useCoThe() {
-  const [data, setData] = useState<CoThe[] | null>(null);
+/** Loads one book, or every book when `book` is "all". */
+function useCoThe(book: string) {
+  const [state, setState] = useState<{ book: string; data: CoThe[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    loadCoThe().then(setData, (e) => setError(String(e instanceof Error ? e.message : e)));
+    let live = true;
+    (book === 'all' ? loadAllCoThe() : loadCoTheBook(book)).then(
+      (data) => live && setState({ book, data }),
+      (e) => live && setError(String(e instanceof Error ? e.message : e)),
+    );
+    return () => {
+      live = false;
+    };
+  }, [book]);
+  return { data: state?.book === book ? state.data : null, error };
+}
+
+function useCoTheIndex() {
+  const [index, setIndex] = useState<CoTheIndex | null>(null);
+  useEffect(() => {
+    loadCoTheIndex().then(setIndex, () => setIndex(null));
   }, []);
-  return { data, error };
+  return index;
 }
 
 export function CoThePage() {
   const { id } = useParams();
-  const { data, error } = useCoThe();
+  return id ? <CoTheProblem key={id} id={id} /> : <CoTheList />;
+}
+
+function CoTheProblem({ id }: { id: string }) {
+  const { data, error } = useCoThe(bookOfId(id));
   if (error) return <div className="card text-bad">{error}</div>;
   if (!data) return <div className="text-muted">Đang tải cờ thế…</div>;
-  const problem = id ? data.find((p) => p.id === id) : undefined;
-  if (id && !problem) return <div className="card">Không tìm thấy thế cờ này.</div>;
-  return problem ? <CoThePlayer key={problem.id} problem={problem} all={data} /> : <CoTheList data={data} />;
+  const problem = data.find((p) => p.id === id);
+  if (!problem) return <div className="card">Không tìm thấy thế cờ này.</div>;
+  return <CoThePlayer key={problem.id} problem={problem} siblings={data} />;
+}
+
+/** "cục 12", "tập 2 · cục 5" or "phần 3 · cục 7", depending on how the book numbers its problems. */
+export function numberLabel(p: CoThe): string {
+  if (!p.no) return '';
+  if (p.book === 'tuongcuc' && p.no > 100) return `tập 2 · cục ${p.no - 100}`;
+  if (p.book === 'khuybi') return `phần ${Math.floor(p.no / 100)} · cục ${p.no % 100}`;
+  return `cục ${p.no}`;
 }
 
 export function goalText(p: CoThe): string {
@@ -60,8 +88,9 @@ function Stars({ n }: { n: number }) {
   );
 }
 
-function CoTheList({ data }: { data: CoThe[] }) {
+function CoTheList() {
   const profile = useProfile();
+  const index = useCoTheIndex();
   const results = useDrillResults();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -71,6 +100,7 @@ function CoTheList({ data }: { data: CoThe[] }) {
   const status = params.get('status') ?? 'all';
   const query = params.get('q') ?? '';
   const page = Number(params.get('page') ?? '1');
+  const { data, error } = useCoThe(book);
 
   const set = (patch: Record<string, string>) => {
     const next = new URLSearchParams(params);
@@ -84,8 +114,7 @@ function CoTheList({ data }: { data: CoThe[] }) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return data.filter((p) => {
-      if (book !== 'all' && p.book !== book) return false;
+    return (data ?? []).filter((p) => {
       if (goal !== 'all' && p.goal !== goal) return false;
       if (!LENGTHS.find((l) => l.id === length)!.test(playerMoves(p))) return false;
       const solved = (results?.get(resultKey(p.id))?.stars ?? 0) > 0;
@@ -96,8 +125,10 @@ function CoTheList({ data }: { data: CoThe[] }) {
     });
   }, [data, book, goal, length, status, query, results]);
 
-  if (!profile || !results) return null;
-  const solvedCount = data.filter((p) => (results.get(resultKey(p.id))?.stars ?? 0) > 0).length;
+  if (error) return <div className="card text-bad">{error}</div>;
+  if (!profile || !results || !index) return <div className="text-muted">Đang tải cờ thế…</div>;
+  const solvedCount = [...results.keys()].filter((k) => k.startsWith('cothe:') && (results.get(k)?.stars ?? 0) > 0).length;
+  const count = (id: string) => index.books.find((b) => b.id === id)?.count ?? 0;
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
   const shown = filtered.slice((page - 1) * PAGE, page * PAGE);
   const currentBook = book !== 'all' ? cotheBook(book) : undefined;
@@ -113,23 +144,30 @@ function CoTheList({ data }: { data: CoThe[] }) {
       <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-2xl font-extrabold">Cờ thế</h1>
         <span className="text-sm text-muted">
-          Đã giải <b className="text-warn">{solvedCount}</b>/{data.length} thế
+          Đã giải <b className="text-warn">{solvedCount}</b>/{index.total} thế
         </span>
       </div>
       <p className="mb-4 text-muted">
-        {data.length} thế cờ (bài cục) kinh điển từ các cổ phổ. Đối thủ đi theo lời giải trong sách; nếu bạn đi khác sách, máy sẽ phòng thủ hết sức.
+        {index.total.toLocaleString('vi-VN')} thế cờ (bài cục, tàn cục, sát cục) từ các cổ phổ và sách hiện đại. Đối thủ đi theo lời giải trong
+        sách; nếu bạn đi khác sách, máy sẽ phòng thủ hết sức.
       </p>
 
-      <div className="mb-3 flex flex-wrap gap-2">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
         <button className={`chip ${book === 'all' ? 'chip-on' : ''}`} onClick={() => set({ book: 'all' })}>
-          Tất cả ({data.length})
+          Tất cả ({index.total})
         </button>
-        {COTHE_BOOKS.map((b) => (
-          <button key={b.id} className={`chip ${book === b.id ? 'chip-on' : ''}`} onClick={() => set({ book: b.id })}>
-            {b.name} ({data.filter((p) => p.book === b.id).length})
-          </button>
-        ))}
       </div>
+      {(['classic', 'modern'] as const).map((group) => (
+        <div key={group} className="mb-2 flex flex-wrap items-center gap-2">
+          <span className="w-24 text-xs font-bold tracking-wider text-muted uppercase">{group === 'classic' ? 'Cổ phổ' : 'Sách hiện đại'}</span>
+          {COTHE_BOOKS.filter((b) => b.group === group && count(b.id) > 0).map((b) => (
+            <button key={b.id} className={`chip ${book === b.id ? 'chip-on' : ''}`} onClick={() => set({ book: b.id })}>
+              {b.name} ({count(b.id)})
+            </button>
+          ))}
+        </div>
+      ))}
+      <div className="mb-3" />
       {currentBook && (
         <div className="card mb-3 text-sm">
           <b>
@@ -167,7 +205,9 @@ function CoTheList({ data }: { data: CoThe[] }) {
         </button>
       </div>
 
-      {filtered.length === 0 ? (
+      {!data ? (
+        <div className="text-muted">Đang tải…</div>
+      ) : filtered.length === 0 ? (
         <div className="card text-center text-muted">Không có thế cờ nào phù hợp.</div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -206,10 +246,11 @@ function CoTheCard({ p, settings, result }: { p: CoThe; settings: Settings; resu
         <div className="text-xs text-muted">{p.title}</div>
         <div className="mt-1 text-xs text-muted">
           {book?.name}
-          {p.no > 0 && ` · cục ${p.no > 100 && p.book === 'tuongcuc' ? `${p.no - 100} (tập 2)` : p.no}`}
+          {p.no > 0 && ` · ${numberLabel(p)}`}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
           <span className={`rounded px-1.5 py-0.5 ${p.goal === 'win' ? 'bg-accent/30' : 'bg-sky-700/40'}`}>{p.goal === 'win' ? 'Thắng' : 'Hòa'}</span>
+          {p.side === 1 && <span className="rounded bg-stone-900 px-1.5 py-0.5 ring-1 ring-stone-600">cầm Đen</span>}
           {p.moves.length > 0 && <span className="text-muted">{playerMoves(p)} nước</span>}
           {result && <Stars n={result.stars} />}
         </div>
@@ -223,7 +264,7 @@ function newRecord(p: CoThe): GameRecord {
   return { ts: now, updatedAt: now, mode: 'bot', playerSide: p.side, startFen: p.fen, moves: [], title: p.titleVi };
 }
 
-function CoThePlayer({ problem, all }: { problem: CoThe; all: CoThe[] }) {
+function CoThePlayer({ problem, siblings }: { problem: CoThe; siblings: CoThe[] }) {
   const profile = useProfile();
   const results = useDrillResults();
   const navigate = useNavigate();
@@ -232,7 +273,6 @@ function CoThePlayer({ problem, all }: { problem: CoThe; all: CoThe[] }) {
   const [outcome, setOutcome] = useState<{ success: boolean; stars: number } | null>(null);
   const [showSolution, setShowSolution] = useState(false);
 
-  const siblings = useMemo(() => all.filter((p) => p.book === problem.book), [all, problem.book]);
   const index = siblings.indexOf(problem);
   const prev = siblings[index - 1];
   const next = siblings[index + 1];
@@ -258,6 +298,11 @@ function CoThePlayer({ problem, all }: { problem: CoThe; all: CoThe[] }) {
   };
 
   const checkEnd = (game: Game): GameResult | null => {
+    // Playing the whole main line solves the problem, even when the book stops before mate.
+    const line = problem.moves;
+    if (line.length > 0 && game.moves.length === line.length && game.moves.every((m, i) => m === line[i])) {
+      return problem.goal === 'win' ? { winner: side, reason: 'book' } : { winner: null, reason: 'book' };
+    }
     if (game.pos.turn !== side || madeMoves(game) < limit) return null;
     return problem.goal === 'win' ? { winner: (1 - side) as Side, reason: 'limit' } : { winner: null, reason: 'limit' };
   };
@@ -283,7 +328,7 @@ function CoThePlayer({ problem, all }: { problem: CoThe; all: CoThe[] }) {
   const header = (
     <div className="card">
       <div className="text-xs text-muted">
-        {book?.name} ({book?.zh}){problem.no > 0 && ` · cục ${problem.no > 100 && problem.book === 'tuongcuc' ? `${problem.no - 100} (tập 2)` : problem.no}`}
+        {book?.name} ({book?.zh}){problem.no > 0 && ` · ${numberLabel(problem)}`}
       </div>
       <div className="text-xl font-bold leading-tight">{problem.titleVi}</div>
       <div className="text-sm text-muted">{problem.title}</div>
@@ -291,9 +336,13 @@ function CoThePlayer({ problem, all }: { problem: CoThe; all: CoThe[] }) {
         <b>{goalText(problem)}</b>
         <div className="text-xs text-muted">
           {problem.goal === 'win'
-            ? `Thắng trong tối đa ${limit} nước${lineMoves ? ` (lời giải gốc: ${lineMoves} nước)` : ''}.`
-            : `Giữ không thua trong ${limit} nước${lineMoves ? ` (lời giải gốc: ${lineMoves} nước)` : ''}.`}{' '}
-          Đi theo sách thì đối thủ cũng đi theo sách.
+            ? lineMoves
+              ? `Đi đúng hết lời giải (${lineMoves} nước), hoặc tự tìm cách thắng trong tối đa ${limit} nước.`
+              : `Thắng trong tối đa ${limit} nước.`
+            : lineMoves
+              ? `Đi đúng hết lời giải (${lineMoves} nước), hoặc giữ không thua trong ${limit} nước.`
+              : `Giữ không thua trong ${limit} nước.`}{' '}
+          Đi đúng lời giải thì đối thủ cũng đáp theo lời giải.
         </div>
       </div>
       {best && (
@@ -415,7 +464,7 @@ function SolutionViewer({ problem, settings, header }: { problem: CoThe; setting
       <aside className="flex flex-col gap-3">
         {header}
         <div className="card text-sm">
-          <b>Lời giải trong sách</b>
+          <b>{cotheBook(problem.book)?.computed ? 'Lời giải (do máy tìm)' : 'Lời giải trong sách'}</b>
           <div className="text-xs text-muted">
             Dùng ◀ ▶ hoặc phím mũi tên để xem từng nước.
             {ply === problem.moves.length && (problem.mate ? ' Kết thúc: chiếu hết.' : problem.goal === 'draw' ? ' Kết thúc: hòa.' : '')}

@@ -10,7 +10,8 @@ export type ResultReason =
   | 'material'
   | 'resign'
   | 'agreement'
-  | 'limit';
+  | 'limit'
+  | 'book';
 
 export interface GameResult {
   /** The winning side, or null for a draw. */
@@ -28,6 +29,7 @@ export const REASON_TEXT: Record<ResultReason, string> = {
   resign: 'xin thua',
   agreement: 'thỏa thuận hòa',
   limit: 'hết số nước cho phép',
+  book: 'đi đúng hết lời giải',
 };
 
 export const sideName = (side: Side) => (side === RED ? 'Đỏ' : 'Đen');
