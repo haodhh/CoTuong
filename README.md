@@ -17,6 +17,7 @@
 - **Puzzle Rush** (3 phút, 5 phút, Sống sót), **Ôn lỗi** bằng lặp lại ngắt quãng (FSRS), **Puzzle hằng ngày**.
 
 **Luyện tập**
+- **Cờ thế:** 991 thế cờ (bài cục) kinh điển từ các cổ phổ – *Thích tình nhã thú* (547), *Lạn kha thần cơ* (251), *Quất trung bí* (75), *Tượng cục hối tồn* (72), *Giang hồ bài cục* (38: Thất tinh tụ hội, Dã mã thao điền, Thiên lý độc hành, Xích dẫn hàng long…), *Tiêu song dật phẩm* (8). Tên thế được phiên âm Hán-Việt kèm tên gốc. Lọc theo sách, thắng/hòa, độ dài; đối thủ đi theo lời giải trong sách, đi khác sách thì máy phòng thủ; có gợi ý, xem lời giải từng nước, chấm sao.
 - **Tàn cuộc:** 11 thế tàn cuộc cơ bản (Xe đơn, Tốt, Mã, Pháo Sĩ thắng Tướng đơn; Xe thắng Sĩ đôi / Tượng đôi / Mã / Pháo; Song Xe, Xe Pháo, Mã Pháo…), thắng máy càng nhanh càng nhiều sao.
 - **Học luật:** 12 bài tương tác – cách đi từng quân (bấm chọn các điểm quân có thể đi), chiếu hết, các thế sát kinh điển, khai cuộc cơ bản, luật thắng/thua/hòa.
 
@@ -52,6 +53,17 @@ npm run build:puzzles -- --minutes 60 --per-band 400
 ```
 
 `npm run verify:drills` cho máy tự chơi các thế tàn cuộc để kiểm tra bên tấn công thắng được.
+
+## Dữ liệu cờ thế
+
+`public/data/cothe.json` được dựng bằng `scripts/build-cothe.ts` từ các bản ghi XQF của cổ phổ trong kho [zhengguozi/chess_book](https://github.com/zhengguozi/chess_book) (thư mục `残局/`: 适情雅趣 550 局全本, 烂柯神机, 象局汇存, 蕉窗逸品, 江湖八大排局, 四大名局; và `全局/橘中秘/桔中秘残局谱`). Chỉ lấy thế cờ và biến chính (lời giải) – nội dung của các sách cổ; không lấy lời bình hiện đại. Mỗi thế được kiểm tra bằng luật cờ của ứng dụng (thế cờ hợp lệ, từng nước trong lời giải hợp lệ) và loại trùng. Tên tiếng Việt (phiên âm Hán-Việt) nằm trong `scripts/cothe/titles-vi.json`.
+
+Cách dựng lại: đọc XQF bằng thư viện Python [`cchess`](https://pypi.org/project/cchess/) thành file JSON-lines (mỗi dòng: `file`, `folder`, `name`, `info`, `fen`, `main` – biến chính dạng UCCI), rồi chạy:
+
+```bash
+npx tsx scripts/build-cothe.ts raw.jsonl            # ghi public/data/cothe.json
+npx tsx scripts/build-cothe.ts raw.jsonl --titles   # liệt kê tên chưa có phiên âm
+```
 
 ## Deploy
 

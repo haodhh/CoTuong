@@ -18,6 +18,8 @@ interface Props {
   /** Bot strength override in milliseconds per move (drills). */
   botTimeMs?: number;
   onEnd?: (result: GameResult, game: Game) => void;
+  /** A prepared move (e.g. from a book line) for the given move list; the engine is used when it returns null. */
+  scriptedMove?: (moves: string[]) => string | null;
   header?: ReactNode;
   /** Shown below the result when the game is over. */
   endActions?: ReactNode;
@@ -28,7 +30,7 @@ function resultOf(record: GameRecord): GameResult | null {
   return { winner: record.result === 'draw' ? null : record.result, reason: record.reason };
 }
 
-export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEnd, header, endActions }: Props) {
+export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEnd, scriptedMove, header, endActions }: Props) {
   // The parent remounts this component (key) for a different game.
   const [game] = useState(() => new Game(record.startFen, record.moves));
   const botSide: Side | undefined = record.mode === 'bot' ? ((1 - (record.playerSide ?? RED)) as Side) : undefined;
@@ -43,8 +45,8 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
   const [syncKey, setSyncKey] = useState(0);
   // The latest saved state; the `record` prop is only the starting point.
   const recordRef = useRef(record);
-  const callbacks = useRef({ onChange, checkEnd, onEnd });
-  callbacks.current = { onChange, checkEnd, onEnd };
+  const callbacks = useRef({ onChange, checkEnd, onEnd, scriptedMove });
+  callbacks.current = { onChange, checkEnd, onEnd, scriptedMove };
 
   const persist = useCallback(
     (patch: Partial<GameRecord>) => {
@@ -89,7 +91,10 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
     let cancelled = false;
     const started = Date.now();
     setThinking(true);
-    const request = botTimeMs
+    const scripted = callbacks.current.scriptedMove?.(game.moves);
+    const request = scripted
+      ? Promise.resolve({ move: scripted })
+      : botTimeMs
       ? think({ fen: game.startFen, moves: [...game.moves], timeMs: botTimeMs })
       : botMove(game.startFen, [...game.moves], record.level ?? 3, game.moves.length);
     request
@@ -145,8 +150,9 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
   const askHint = async () => {
     setHintLoading(true);
     try {
-      const r = await think({ fen: game.startFen, moves: [...game.moves], timeMs: 1200 });
-      const sq = moveSquares(r.move ?? undefined);
+      const scripted = callbacks.current.scriptedMove?.(game.moves);
+      const move = scripted ?? (await think({ fen: game.startFen, moves: [...game.moves], timeMs: 1200 })).move;
+      const sq = moveSquares(move ?? undefined);
       if (sq) setHint([{ from: sq[0], to: sq[1], color: 'blue' }]);
       persist({ hints: (recordRef.current.hints ?? 0) + 1 });
     } catch {
@@ -170,7 +176,7 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
   const level = record.level ? botLevel(record.level) : undefined;
   const topSide = (1 - orientation) as Side;
   const playerLabel = (side: Side) =>
-    botSide === undefined ? `Bên ${sideName(side)}` : side === botSide ? `🤖 Máy · ${level?.name ?? 'Tàn cuộc'}` : '🙂 Bạn';
+    botSide === undefined ? `Bên ${sideName(side)}` : side === botSide ? `🤖 Máy${level ? ` · ${level.name}` : ''}` : '🙂 Bạn';
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">

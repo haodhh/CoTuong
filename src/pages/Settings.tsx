@@ -160,6 +160,14 @@ export function SettingsPage() {
           toàn trên trình duyệt. Puzzle được sinh tự động từ các ván máy tự đấu và được kiểm chứng là chiếu hết bắt buộc.
         </p>
         <p className="mt-2">
+          Cờ thế lấy từ các cổ phổ Thích tình nhã thú, Quất trung bí, Lạn kha thần cơ, Tượng cục hối tồn, Tiêu song dật phẩm và các thế giang hồ, qua
+          bản số hóa XQF trong kho{' '}
+          <a className="link" href="https://github.com/zhengguozi/chess_book" target="_blank" rel="noreferrer">
+            zhengguozi/chess_book
+          </a>
+          .
+        </p>
+        <p className="mt-2">
           Luật hòa/thua được đơn giản hóa: chiếu dai bị xử thua, lặp lại thế cờ 3 lần khác là hòa, 60 nước không ăn quân là hòa.
         </p>
       </section>

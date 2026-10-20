@@ -32,6 +32,7 @@ const NAV: { title?: string; items: NavItem[] }[] = [
   {
     title: 'Luyện tập',
     items: [
+      { to: '/cothe', icon: '🏯', label: 'Cờ thế' },
       { to: '/endgames', icon: '🏁', label: 'Tàn cuộc' },
       { to: '/learn', icon: '🎓', label: 'Học luật' },
     ],

@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { setSoundEnabled } from './core/sound';
 import { useProfile } from './data/store';
 import { Analysis } from './pages/Analysis';
+import { CoThePage } from './pages/CoThe';
 import { Daily } from './pages/Daily';
 import { Endgames } from './pages/Endgames';
 import { Games } from './pages/Games';
@@ -38,6 +39,8 @@ export function App() {
           <Route path="rush" element={<Rush />} />
           <Route path="review" element={<Review />} />
           <Route path="daily" element={<Daily />} />
+          <Route path="cothe" element={<CoThePage />} />
+          <Route path="cothe/:id" element={<CoThePage />} />
           <Route path="endgames" element={<Endgames />} />
           <Route path="endgames/:id" element={<Endgames />} />
           <Route path="learn" element={<Learn />} />
