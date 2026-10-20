@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { cotheBook } from '../content/cotheBooks';
 import { bookOfId } from '../data/cotheData';
 import { useDueCount } from '../data/store';
+import { ErrorBoundary } from './ErrorBoundary';
 
 interface NavItem {
   to: string;
@@ -84,6 +85,7 @@ function useCoTheGroup(): string | null {
 }
 
 export function Layout() {
+  const location = useLocation();
   const due = useDueCount(useNow()) ?? 0;
   const cotheGroup = useCoTheGroup();
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -136,7 +138,9 @@ export function Layout() {
         <nav className="flex gap-1 overflow-x-auto px-2 pb-2">{NAV.flatMap((g) => g.items).map(link)}</nav>
       </header>
       <main className="mx-auto w-full max-w-6xl flex-1 p-4 lg:p-6">
-        <Outlet />
+        <ErrorBoundary resetKey={location.pathname + location.search}>
+          <Outlet />
+        </ErrorBoundary>
       </main>
     </div>
   );
