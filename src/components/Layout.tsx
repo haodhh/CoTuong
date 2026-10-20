@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet } from 'react-router';
+import { Link, NavLink, Outlet, useLocation } from 'react-router';
+import { cotheBook } from '../content/cotheBooks';
+import { bookOfId } from '../data/cotheData';
 import { useDueCount } from '../data/store';
 
 interface NavItem {
@@ -55,8 +57,27 @@ export function useNow(intervalMs = 60_000) {
   return now;
 }
 
+/** Sub-menu of "Cờ thế" in the sidebar; `group` matches the ?group= of the list page. */
+const COTHE_MENU = [
+  { group: 'all', label: 'Tất cả (dễ → khó)', to: '/cothe' },
+  { group: 'classic', label: 'Cổ phổ', to: '/cothe?group=classic' },
+  { group: 'modern', label: 'Sách hiện đại', to: '/cothe?group=modern' },
+];
+
+/** Which "Cờ thế" sub-menu the current page belongs to, if any. */
+function useCoTheGroup(): string | null {
+  const { pathname, search } = useLocation();
+  if (!pathname.startsWith('/cothe')) return null;
+  const id = pathname.split('/')[2];
+  if (id) return cotheBook(bookOfId(decodeURIComponent(id)))?.group ?? 'all';
+  const params = new URLSearchParams(search);
+  const book = params.get('book');
+  return params.get('group') ?? (book ? (cotheBook(book)?.group ?? 'all') : 'all');
+}
+
 export function Layout() {
   const due = useDueCount(useNow()) ?? 0;
+  const cotheGroup = useCoTheGroup();
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `flex items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
       isActive ? 'bg-white/10 text-white' : 'text-stone-300 hover:bg-white/5 hover:text-white'
@@ -77,7 +98,26 @@ export function Layout() {
         {NAV.map((group, i) => (
           <div key={i} className="mb-2 flex flex-col gap-0.5">
             {group.title && <div className="px-3 pt-1 pb-0.5 text-[11px] font-bold tracking-wider text-muted uppercase">{group.title}</div>}
-            {group.items.map(link)}
+            {group.items.map((item) => (
+              <div key={item.to} className="flex flex-col gap-0.5">
+                {link(item)}
+                {item.to === '/cothe' && (
+                  <div className="ml-6 flex flex-col gap-0.5 border-l border-white/10 pl-2">
+                    {COTHE_MENU.map((m) => (
+                      <Link
+                        key={m.group}
+                        to={m.to}
+                        className={`rounded-md px-2 py-1 text-xs font-semibold transition-colors ${
+                          cotheGroup === m.group ? 'bg-white/10 text-white' : 'text-stone-400 hover:bg-white/5 hover:text-white'
+                        }`}
+                      >
+                        {m.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         ))}
       </aside>

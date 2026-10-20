@@ -13,6 +13,7 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { difficultyScore, levelOf } from '../src/core/difficulty';
 import { BLACK, Position, RED, uciToMove, type Side } from '../src/core/xiangqi';
 
 interface Raw {
@@ -36,6 +37,9 @@ interface Entry {
   fen: string;
   moves: string[];
   mate: boolean;
+  /** Difficulty score and level (1 easy … 4 very hard), see src/core/difficulty.ts. */
+  score: number;
+  level: number;
 }
 
 /**
@@ -327,6 +331,7 @@ for (const book of BOOKS) {
     if (book.id === 'sat4000') id = `${book.id}-${r.name}`;
     for (let k = 2; ids.has(id); k++) id = `${book.id}-${meta.no ?? ids.size + 1}-${k}`;
     ids.add(id);
+    const score = difficultyScore({ fen: start.fen(), moves, side, goal });
     entries.push({
       id,
       book: book.id,
@@ -338,6 +343,8 @@ for (const book of BOOKS) {
       fen: start.fen(),
       moves,
       mate,
+      score,
+      level: levelOf(score),
     });
   }
 }
@@ -359,7 +366,20 @@ if (process.argv.includes('--titles')) {
       join(outDir, file),
       JSON.stringify({
         book: book.id,
-        entries: own.map((e) => [e.id, e.book, e.no, e.title, e.titleVi, e.goal === 'win' ? 1 : 0, e.side, e.fen, e.moves.join(' '), e.mate ? 1 : 0]),
+        entries: own.map((e) => [
+          e.id,
+          e.book,
+          e.no,
+          e.title,
+          e.titleVi,
+          e.goal === 'win' ? 1 : 0,
+          e.side,
+          e.fen,
+          e.moves.join(' '),
+          e.mate ? 1 : 0,
+          e.score,
+          e.level,
+        ]),
       }),
     );
     index.books.push({ id: book.id, count: own.length, file });

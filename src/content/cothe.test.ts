@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { bookOfId, parseRow, playerMoves, type CoThe } from '../data/cotheData';
 import { BLACK, Position, RED, uciToMove } from '../core/xiangqi';
+import { LEVEL_THRESHOLDS, difficultyScore, levelOf } from '../core/difficulty';
 import { COTHE_BOOKS } from './cotheBooks';
 
 const dir = new URL('../../public/data/cothe/', import.meta.url);
@@ -44,7 +45,35 @@ describe('cờ thế data', () => {
   });
 
   it('counts the player moves of a line', () => {
-    const p = parseRow(['x', 'stnt', 1, 't', 't', 1, 0, '4k4/9/9/9/9/9/9/9/9/R2K5 w', 'a0a8 e9f9 a8a9', 0]);
+    const p = parseRow(['x', 'stnt', 1, 't', 't', 1, 0, '4k4/9/9/9/9/9/9/9/9/R2K5 w', 'a0a8 e9f9 a8a9', 0, 9.6, 2]);
     expect(playerMoves(p)).toBe(2);
+  });
+
+  it('stores the difficulty the builder computes', () => {
+    for (const p of problems) {
+      expect(p.score, p.id).toBe(difficultyScore(p));
+      expect(p.level, p.id).toBe(levelOf(p.score));
+    }
+  });
+});
+
+describe('difficulty', () => {
+  const mate1 = { fen: '3k5/9/9/9/9/9/9/9/4R4/4K4 w', moves: ['e1d1'], side: 0 as const, goal: 'win' as const };
+  const longer = { fen: '4k4/9/9/9/9/9/9/9/9/R2K5 w', moves: ['a0a8', 'e9f9', 'a8a9', 'f9f8', 'd0d1'], side: 0 as const, goal: 'win' as const };
+
+  it('rates longer and quieter solutions as harder', () => {
+    expect(difficultyScore(mate1)).toBeLessThan(difficultyScore(longer));
+    expect(levelOf(difficultyScore(mate1))).toBe(1);
+  });
+
+  it('rates holding a draw as harder than the same line for a win', () => {
+    expect(difficultyScore({ ...longer, goal: 'draw' })).toBeGreaterThan(difficultyScore(longer));
+  });
+
+  it('maps scores to the four levels', () => {
+    expect(levelOf(0)).toBe(1);
+    expect(levelOf(LEVEL_THRESHOLDS[0])).toBe(1);
+    expect(levelOf(LEVEL_THRESHOLDS[0] + 0.1)).toBe(2);
+    expect(levelOf(LEVEL_THRESHOLDS[2] + 1)).toBe(4);
   });
 });

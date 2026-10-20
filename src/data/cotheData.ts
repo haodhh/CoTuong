@@ -13,6 +13,9 @@ export interface CoThe {
   moves: string[];
   /** Whether the main line ends in mate. */
   mate: boolean;
+  /** Difficulty score (higher is harder) and level 1–4, see src/core/difficulty.ts. */
+  score: number;
+  level: number;
 }
 
 export interface CoTheIndex {
@@ -20,7 +23,7 @@ export interface CoTheIndex {
   books: { id: string; count: number; file: string }[];
 }
 
-type Row = [string, string, number, string, string, number, 0 | 1, string, string, number];
+type Row = [string, string, number, string, string, number, 0 | 1, string, string, number, number, number];
 
 const url = (file: string) => `${import.meta.env.BASE_URL}data/cothe/${file}`;
 let indexCache: Promise<CoTheIndex> | undefined;
@@ -56,16 +59,31 @@ export function loadCoTheBook(book: string): Promise<CoThe[]> {
   return cached;
 }
 
-export async function loadAllCoThe(): Promise<CoThe[]> {
+/** Loads several books (all of them when `books` is omitted). */
+export async function loadCoTheBooks(books?: string[]): Promise<CoThe[]> {
   const index = await loadCoTheIndex();
-  return (await Promise.all(index.books.map((b) => loadCoTheBook(b.id)))).flat();
+  const ids = books ?? index.books.map((b) => b.id);
+  return (await Promise.all(ids.map((b) => loadCoTheBook(b)))).flat();
 }
 
 /** Book id of a problem id such as "stnt-12". */
 export const bookOfId = (id: string) => id.split('-')[0];
 
-export function parseRow([id, book, no, title, titleVi, win, side, fen, moves, mate]: Row): CoThe {
-  return { id, book, no, title, titleVi, goal: win ? 'win' : 'draw', side, fen, moves: moves ? moves.split(' ') : [], mate: mate === 1 };
+export function parseRow([id, book, no, title, titleVi, win, side, fen, moves, mate, score, level]: Row): CoThe {
+  return {
+    id,
+    book,
+    no,
+    title,
+    titleVi,
+    goal: win ? 'win' : 'draw',
+    side,
+    fen,
+    moves: moves ? moves.split(' ') : [],
+    mate: mate === 1,
+    score: score ?? 0,
+    level: level ?? 0,
+  };
 }
 
 /** Moves the player makes in the main line. */
