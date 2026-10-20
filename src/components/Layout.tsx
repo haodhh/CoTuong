@@ -69,7 +69,15 @@ function useCoTheGroup(): string | null {
   const { pathname, search } = useLocation();
   if (!pathname.startsWith('/cothe')) return null;
   const id = pathname.split('/')[2];
-  if (id) return cotheBook(bookOfId(decodeURIComponent(id)))?.group ?? 'all';
+  if (id) {
+    let raw = id;
+    try {
+      raw = decodeURIComponent(id);
+    } catch {
+      // A malformed escape in a typed URL: use the segment as it is.
+    }
+    return cotheBook(bookOfId(raw))?.group ?? 'all';
+  }
   const params = new URLSearchParams(search);
   const book = params.get('book');
   return params.get('group') ?? (book ? (cotheBook(book)?.group ?? 'all') : 'all');

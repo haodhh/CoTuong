@@ -41,19 +41,20 @@ const SORTERS: Record<Sort, (a: CoThe, b: CoThe) => number> = {
 /** Loads the given books (every book when `books` is undefined). */
 function useCoThe(books: string[] | undefined) {
   const key = books ? books.join(',') : '*';
-  const [state, setState] = useState<{ key: string; data: CoThe[] } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<{ key: string; data?: CoThe[]; error?: string } | null>(null);
   useEffect(() => {
     let live = true;
     loadCoTheBooks(key === '*' ? undefined : key.split(',')).then(
       (data) => live && setState({ key, data }),
-      (e) => live && setError(String(e instanceof Error ? e.message : e)),
+      (e) => live && setState({ key, error: String(e instanceof Error ? e.message : e) }),
     );
     return () => {
       live = false;
     };
   }, [key]);
-  return { data: state?.key === key ? state.data : null, error };
+  // Results belong to the books they were loaded for; switching books never shows stale ones.
+  const current = state?.key === key ? state : null;
+  return { data: current?.data ?? null, error: current?.error ?? null };
 }
 
 function useCoTheIndex() {
@@ -135,9 +136,10 @@ function CoTheList() {
   const level = Number(params.get('level') ?? '0');
   const status = params.get('status') ?? 'all';
   const query = params.get('q') ?? '';
-  const page = Math.max(1, Number(params.get('page') ?? '1') || 1);
+  const pageParam = Math.max(1, Math.floor(Number(params.get('page') ?? '1')) || 1);
   // "Tất cả" is ordered from easy to hard; a single book keeps the book's order unless asked.
-  const sort = (params.get('sort') as Sort) ?? (book !== 'all' ? 'book' : 'easy');
+  const sortParam = params.get('sort');
+  const sort: Sort = SORTS.some((s) => s.id === sortParam) ? (sortParam as Sort) : book !== 'all' ? 'book' : 'easy';
 
   const books = group === 'all' ? undefined : book !== 'all' ? [book] : groupBooks.map((b) => b.id);
   const { data, error } = useCoThe(books);
@@ -145,9 +147,12 @@ function CoTheList() {
   const set = (patch: Record<string, string>) => {
     const next = new URLSearchParams(params);
     for (const [k, v] of Object.entries(patch)) {
-      if (!v || v === 'all' || v === '0') next.delete(k);
+      // Defaults are left out of the URL ("0" is the default only for the level filter).
+      if (!v || v === 'all' || (k === 'level' && v === '0')) next.delete(k);
       else next.set(k, v);
     }
+    // Keep the menu explicit, so links that only named a book stay in their group.
+    if (group !== 'all') next.set('group', group);
     if (!('page' in patch)) next.delete('page');
     setParams(next, { replace: true });
   };
@@ -172,7 +177,6 @@ function CoTheList() {
     return sort === 'book' ? list : [...list].sort(SORTERS[sort]);
   }, [data, goal, level, status, query, results, sort]);
 
-  if (error) return <div className="card text-bad">{error}</div>;
   if (!profile || !results || !index) return <div className="text-muted">Đang tải cờ thế…</div>;
   const count = (id: string) => index.books.find((b) => b.id === id)?.count ?? 0;
   const groupCount = (g: CoTheGroup) =>
@@ -180,6 +184,8 @@ function CoTheList() {
   const solvedIn = (ids: string[] | undefined) =>
     [...results.keys()].filter((k) => k.startsWith('cothe:') && (results.get(k)?.stars ?? 0) > 0 && (!ids || ids.includes(bookOfId(k.slice(6))))).length;
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
+  // The list can shrink under a saved page number (e.g. after solving the last unsolved problem).
+  const page = Math.min(pages, pageParam);
   const shown = filtered.slice((page - 1) * PAGE, page * PAGE);
   const currentBook = book !== 'all' ? cotheBook(book) : undefined;
   const currentGroup = GROUPS.find((g) => g.id === group)!;
@@ -293,7 +299,9 @@ function CoTheList() {
         </button>
       </div>
 
-      {!data ? (
+      {error ? (
+        <div className="card text-bad">{error}</div>
+      ) : !data ? (
         <div className="text-muted">Đang tải…</div>
       ) : filtered.length === 0 ? (
         <div className="card text-center text-muted">Không có thế cờ nào phù hợp.</div>
