@@ -4,7 +4,7 @@ import { PIECE_NAME } from '../core/notation';
 import { playSound } from '../core/sound';
 import { Position, RED, SQUARES, makeMove, moveToUci, sideOf, typeOf, type Side } from '../core/xiangqi';
 import type { GameRecord, Settings } from '../data/db';
-import { botMove, stopEngine, think } from '../engine/client';
+import { EngineCancelled, botMove, stopEngine, think } from '../engine/client';
 import { botLevel } from '../engine/levels';
 import { Board, type Shape } from './Board';
 
@@ -43,13 +43,25 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
   const [flipped, setFlipped] = useState(false);
   const [autoFlip, setAutoFlip] = useState(false);
   const [syncKey, setSyncKey] = useState(0);
+  /** Set when the engine fails (not when it is cancelled); the bot's turn can be retried. */
+  const [engineError, setEngineError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   // The latest saved state; the `record` prop is only the starting point.
   const recordRef = useRef(record);
+  // Late engine answers (a hint, a bot move) must not touch a game that was left or replaced.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const callbacks = useRef({ onChange, checkEnd, onEnd, scriptedMove });
   callbacks.current = { onChange, checkEnd, onEnd, scriptedMove };
 
   const persist = useCallback(
     (patch: Partial<GameRecord>) => {
+      if (!mounted.current) return;
       const next = { ...recordRef.current, moves: [...game.moves], ...patch };
       recordRef.current = next;
       callbacks.current.onChange(next);
@@ -91,15 +103,21 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
     let cancelled = false;
     const started = Date.now();
     setThinking(true);
+    setEngineError(null);
     const scripted = callbacks.current.scriptedMove?.(game.moves);
-    const request = scripted
-      ? Promise.resolve({ move: scripted })
+    const engine = scripted
+      ? null
       : botTimeMs
-      ? think({ fen: game.startFen, moves: [...game.moves], timeMs: botTimeMs })
-      : botMove(game.startFen, [...game.moves], record.level ?? 3, game.moves.length);
-    request
+        ? think({ fen: game.startFen, moves: [...game.moves], timeMs: botTimeMs })
+        : botMove(game.startFen, [...game.moves], record.level ?? 3, game.moves.length);
+    (engine ?? Promise.resolve({ move: scripted ?? null }))
       .then((r) => {
-        if (cancelled || !r.move) return;
+        if (cancelled) return;
+        if (!r.move) {
+          setThinking(false);
+          setEngineError('Máy không tìm được nước đi.');
+          return;
+        }
         const move = r.move;
         window.setTimeout(() => {
           if (cancelled) return;
@@ -107,15 +125,18 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
           applyMove(move);
         }, Math.max(0, 400 - (Date.now() - started)));
       })
-      .catch(() => {
-        if (!cancelled) setThinking(false);
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setThinking(false);
+        if (!(e instanceof EngineCancelled)) setEngineError(e instanceof Error ? e.message : String(e));
       });
     return () => {
       cancelled = true;
       setThinking(false);
-      stopEngine();
+      // Only this effect's own request: a hint or another page's analysis is left alone.
+      if (engine) stopEngine(engine.id);
     };
-  }, [version, result, botSide, game, record.level, botTimeMs, applyMove]);
+  }, [version, result, botSide, game, record.level, botTimeMs, applyMove, retryKey]);
 
   const turn = game.pos.turn;
   const playerSide = record.playerSide ?? RED;
@@ -152,18 +173,36 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
     persist({ result: undefined, reason: undefined, takebacks: (recordRef.current.takebacks ?? 0) + 1 });
   };
 
+  const hintRequest = useRef<number | null>(null);
+  // Leaving the page (or replaying, which remounts) cancels a hint still being computed.
+  useEffect(
+    () => () => {
+      if (hintRequest.current !== null) stopEngine(hintRequest.current);
+    },
+    [],
+  );
+
   const askHint = async () => {
     setHintLoading(true);
+    const asked = game.moves.length;
     try {
       const scripted = callbacks.current.scriptedMove?.(game.moves);
-      const move = scripted ?? (await think({ fen: game.startFen, moves: [...game.moves], timeMs: 1200 })).move;
+      let move = scripted;
+      if (!move) {
+        const request = think({ fen: game.startFen, moves: [...game.moves], timeMs: 1200 });
+        hintRequest.current = request.id;
+        move = (await request).move;
+      }
+      // Ignore an answer for a position that is no longer on the board.
+      if (!mounted.current || game.moves.length !== asked) return;
       const sq = moveSquares(move ?? undefined);
       if (sq) setHint([{ from: sq[0], to: sq[1], color: 'blue' }]);
       persist({ hints: (recordRef.current.hints ?? 0) + 1 });
-    } catch {
-      // Cancelled by a move or takeback.
+    } catch (e) {
+      if (mounted.current && !(e instanceof EngineCancelled)) setEngineError(e instanceof Error ? e.message : String(e));
     } finally {
-      setHintLoading(false);
+      hintRequest.current = null;
+      if (mounted.current) setHintLoading(false);
     }
   };
 
@@ -218,6 +257,26 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
             </div>
             <div className="text-sm text-muted">
               {game.pos.inCheck() ? '⚠ Đang bị chiếu!' : `Nước thứ ${Math.floor(game.moves.length / 2) + 1} · ${sideName(turn)} đi`}
+            </div>
+          </div>
+        )}
+
+        {engineError && !result && (
+          <div className="rounded-xl bg-bad/20 p-3 text-sm">
+            <div className="font-semibold text-bad">⚠ {engineError}</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                className="btn btn-sm"
+                onClick={() => {
+                  setEngineError(null);
+                  setRetryKey((k) => k + 1);
+                }}
+              >
+                ↻ Thử lại
+              </button>
+              <button className="btn btn-sm" onClick={() => window.location.reload()}>
+                Tải lại trang
+              </button>
             </div>
           </div>
         )}
@@ -331,9 +390,12 @@ function ResultCard({ result, playerSide, children }: { result: GameResult; play
 }
 
 export function MoveTable({ notation, current, onSelect }: { notation: string[]; current: number; onSelect: (ply: number) => void }) {
-  const end = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  // Keep the latest move visible by scrolling the list's own box only. (scrollIntoView would
+  // scroll the whole page on phones, where the list is below the board: the page then jumps
+  // under the player's finger and the tap lands on a button.)
   useEffect(() => {
-    if (current === notation.length) end.current?.scrollIntoView({ block: 'nearest' });
+    if (current === notation.length && list.current) list.current.scrollTop = list.current.scrollHeight;
   }, [current, notation.length]);
   const rows = [];
   for (let i = 0; i < notation.length; i += 2) rows.push(i);
@@ -356,7 +418,7 @@ export function MoveTable({ notation, current, onSelect }: { notation: string[];
           </button>
         </span>
       </div>
-      <div className="max-h-64 overflow-y-auto font-mono text-sm">
+      <div ref={list} className="max-h-64 overflow-y-auto font-mono text-sm">
         {rows.length === 0 && <div className="py-2 text-center text-xs text-muted">Chưa có nước nào.</div>}
         {rows.map((i) => (
           <div key={i} className="grid grid-cols-[2.5rem_1fr_1fr] items-center">
@@ -376,7 +438,6 @@ export function MoveTable({ notation, current, onSelect }: { notation: string[];
             )}
           </div>
         ))}
-        <div ref={end} />
       </div>
     </div>
   );

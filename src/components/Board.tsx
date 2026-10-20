@@ -194,6 +194,9 @@ export function Board(props: BoardProps) {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={() => setDrag(null)}
+        // Moves are handled with pointer events. Cancelling the touch's compatibility click
+        // keeps a tap from also pressing a button if the page moved under the finger.
+        onTouchEnd={(e) => e.cancelable && e.preventDefault()}
         role="img"
         aria-label="Bàn cờ tướng"
       >

@@ -39,9 +39,28 @@ export function defaultProfile(now = Date.now()): Profile {
   };
 }
 
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** Fills in anything missing or malformed (old versions, edited backups) with defaults. */
+export function normalizeProfile(p: Partial<Profile> | undefined): Profile {
+  const d = defaultProfile();
+  if (!p) return d;
+  const r = p.rating;
+  const rating = r && isNum(r.rating) && isNum(r.rd) && isNum(r.vol) ? r : d.rating;
+  return {
+    ...d,
+    ...p,
+    id: 'me',
+    rating,
+    ratedAt: isNum(p.ratedAt) ? p.ratedAt : d.ratedAt,
+    createdAt: isNum(p.createdAt) ? p.createdAt : d.createdAt,
+    onboarded: typeof p.onboarded === 'boolean' ? p.onboarded : d.onboarded,
+    settings: { ...DEFAULT_SETTINGS, ...(p.settings ?? {}) },
+  };
+}
+
 export async function getProfile(): Promise<Profile> {
-  const p = await db.profile.get('me');
-  return p ? { ...p, settings: { ...DEFAULT_SETTINGS, ...p.settings } } : defaultProfile();
+  return normalizeProfile(await db.profile.get('me'));
 }
 
 export function useProfile(): Profile | undefined {
@@ -248,17 +267,27 @@ export async function exportBackup(): Promise<string> {
 }
 
 export async function importBackup(json: string) {
-  const data = JSON.parse(json) as Backup;
-  if (data.app !== 'cotuong-trainer') throw new Error('File không phải bản sao lưu của ứng dụng này.');
+  let data: Backup;
+  try {
+    data = JSON.parse(json) as Backup;
+  } catch {
+    throw new Error('File không đọc được (không phải JSON).');
+  }
+  if (!data || data.app !== 'cotuong-trainer') throw new Error('File không phải bản sao lưu của ứng dụng này.');
+  const list = <T,>(v: T[] | undefined): T[] => (Array.isArray(v) ? v : []);
+  // Check everything before clearing the current data, so a bad file changes nothing.
+  const reviews = list(data.reviews)
+    .filter((r) => r && r.puzzleId && r.puzzle && r.card)
+    .map((r) => ({ ...r, card: reviveCard(r.card) }));
   await db.transaction('rw', TABLES(), async () => {
     await Promise.all(TABLES().map((t) => t.clear()));
-    if (data.profile) await db.profile.put(data.profile);
-    await db.attempts.bulkAdd(data.attempts);
-    await db.reviews.bulkAdd(data.reviews.map((r) => ({ ...r, card: reviveCard(r.card) })));
-    await db.rushRuns.bulkAdd(data.rushRuns);
-    await db.games.bulkAdd(data.games ?? []);
-    await db.drills.bulkAdd(data.drills ?? []);
-    await db.lessons.bulkAdd(data.lessons ?? []);
+    if (data.profile) await db.profile.put(normalizeProfile(data.profile));
+    await db.attempts.bulkAdd(list(data.attempts));
+    await db.reviews.bulkAdd(reviews);
+    await db.rushRuns.bulkAdd(list(data.rushRuns));
+    await db.games.bulkAdd(list(data.games));
+    await db.drills.bulkAdd(list(data.drills));
+    await db.lessons.bulkAdd(list(data.lessons));
   });
 }
 

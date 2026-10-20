@@ -54,9 +54,10 @@ export async function loadBand(band: number): Promise<Puzzle[]> {
 
 /**
  * Finds a puzzle near the target rating, searching outward through the rating bands.
- * If every matching puzzle has been excluded, exclusions are ignored.
+ * If every matching puzzle has been excluded, exclusions are ignored, except `avoid` (the puzzle
+ * on screen), so "next" never returns the same puzzle again.
  */
-export async function findPuzzle(opts: SelectOptions & { maxDistance?: number }): Promise<Puzzle | undefined> {
+export async function findPuzzle(opts: SelectOptions & { maxDistance?: number; avoid?: string }): Promise<Puzzle | undefined> {
   const index = await loadIndex();
   const maxDistance = opts.maxDistance ?? Infinity;
   const bands = bandsByDistance(
@@ -65,7 +66,8 @@ export async function findPuzzle(opts: SelectOptions & { maxDistance?: number })
   ).filter((b) => Math.abs(b + 50 - opts.target) <= maxDistance + 50);
   for (const withExclusions of [true, false]) {
     for (const band of bands) {
-      const found = choosePuzzle(await loadBand(band), withExclusions ? opts : { ...opts, exclude: undefined });
+      const exclude = withExclusions ? opts.exclude : opts.avoid ? new Set([opts.avoid]) : undefined;
+      const found = choosePuzzle(await loadBand(band), { ...opts, exclude });
       if (found) return found;
     }
   }

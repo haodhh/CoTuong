@@ -118,7 +118,11 @@ function DrillPlayer({ drill }: { drill: Drill }) {
         key={attempt}
         record={record}
         settings={profile.settings}
-        onChange={setRecord}
+        onChange={(r) => {
+          setRecord(r);
+          // A takeback after the end reopens the drill: drop the old result.
+          if (r.result === undefined) setStars(null);
+        }}
         botTimeMs={BOT_MS}
         checkEnd={checkEnd}
         onEnd={onEnd}

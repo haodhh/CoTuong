@@ -42,6 +42,7 @@ const SORTERS: Record<Sort, (a: CoThe, b: CoThe) => number> = {
 function useCoThe(books: string[] | undefined) {
   const key = books ? books.join(',') : '*';
   const [state, setState] = useState<{ key: string; data?: CoThe[]; error?: string } | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
     loadCoTheBooks(key === '*' ? undefined : key.split(',')).then(
@@ -51,18 +52,50 @@ function useCoThe(books: string[] | undefined) {
     return () => {
       live = false;
     };
-  }, [key]);
+  }, [key, attempt]);
   // Results belong to the books they were loaded for; switching books never shows stale ones.
   const current = state?.key === key ? state : null;
-  return { data: current?.data ?? null, error: current?.error ?? null };
+  const retry = () => {
+    setState(null);
+    setAttempt((a) => a + 1);
+  };
+  return { data: current?.data ?? null, error: current?.error ?? null, retry };
 }
 
 function useCoTheIndex() {
   const [index, setIndex] = useState<CoTheIndex | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    loadCoTheIndex().then(setIndex, () => setIndex(null));
-  }, []);
-  return index;
+    let live = true;
+    setError(null);
+    loadCoTheIndex().then(
+      (i) => live && setIndex(i),
+      (e) => live && setError(String(e instanceof Error ? e.message : e)),
+    );
+    return () => {
+      live = false;
+    };
+  }, [attempt]);
+  return { index, error, retry: () => setAttempt((a) => a + 1) };
+}
+
+/** A load error with a way to try again (the network may be back). */
+function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="card text-center">
+      <div className="font-semibold text-bad">Không tải được dữ liệu cờ thế</div>
+      <div className="mt-1 text-sm text-muted">{message}</div>
+      <div className="mt-3 flex justify-center gap-2">
+        <button className="btn btn-primary" onClick={onRetry}>
+          ↻ Thử lại
+        </button>
+        <button className="btn" onClick={() => window.location.reload()}>
+          Tải lại trang
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function CoThePage() {
@@ -71,8 +104,8 @@ export function CoThePage() {
 }
 
 function CoTheProblem({ id }: { id: string }) {
-  const { data, error } = useCoThe([bookOfId(id)]);
-  if (error) return <div className="card text-bad">{error}</div>;
+  const { data, error, retry } = useCoThe([bookOfId(id)]);
+  if (error) return <LoadError message={error} onRetry={retry} />;
   if (!data) return <div className="text-muted">Đang tải cờ thế…</div>;
   const problem = data.find((p) => p.id === id);
   if (!problem) return <div className="card">Không tìm thấy thế cờ này.</div>;
@@ -121,7 +154,7 @@ function groupFromParams(params: URLSearchParams): CoTheGroup {
 
 function CoTheList() {
   const profile = useProfile();
-  const index = useCoTheIndex();
+  const { index, error: indexError, retry: retryIndex } = useCoTheIndex();
   const results = useDrillResults();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -142,7 +175,7 @@ function CoTheList() {
   const sort: Sort = SORTS.some((s) => s.id === sortParam) ? (sortParam as Sort) : book !== 'all' ? 'book' : 'easy';
 
   const books = group === 'all' ? undefined : book !== 'all' ? [book] : groupBooks.map((b) => b.id);
-  const { data, error } = useCoThe(books);
+  const { data, error, retry } = useCoThe(books);
 
   const set = (patch: Record<string, string>) => {
     const next = new URLSearchParams(params);
@@ -177,6 +210,7 @@ function CoTheList() {
     return sort === 'book' ? list : [...list].sort(SORTERS[sort]);
   }, [data, goal, level, status, query, results, sort]);
 
+  if (indexError && !index) return <LoadError message={indexError} onRetry={retryIndex} />;
   if (!profile || !results || !index) return <div className="text-muted">Đang tải cờ thế…</div>;
   const count = (id: string) => index.books.find((b) => b.id === id)?.count ?? 0;
   const groupCount = (g: CoTheGroup) =>
@@ -300,7 +334,7 @@ function CoTheList() {
       </div>
 
       {error ? (
-        <div className="card text-bad">{error}</div>
+        <LoadError message={error} onRetry={retry} />
       ) : !data ? (
         <div className="text-muted">Đang tải…</div>
       ) : filtered.length === 0 ? (
@@ -478,7 +512,9 @@ function CoThePlayer({ problem, siblings }: { problem: CoThe; siblings: CoThe[] 
           <button
             className="btn btn-sm"
             onClick={() => {
-              if (!showSolution && !outcome) setPeeked(true);
+              // Seeing the solution counts unless the problem is already solved; after a loss the
+              // attempt can continue with a takeback, so it counts then too.
+              if (!showSolution && !outcome?.success) setPeeked(true);
               setShowSolution((s) => !s);
             }}
           >

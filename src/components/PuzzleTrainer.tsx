@@ -26,6 +26,7 @@ export function PuzzleTrainer({ mode, theme }: { mode: PuzzleMode; theme?: strin
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<Result[]>([]);
   const seen = useRef<Set<string> | null>(null);
+  const current = useRef<string | undefined>(undefined);
   const profileRef = useRef(profile);
   profileRef.current = profile;
 
@@ -36,9 +37,10 @@ export function PuzzleTrainer({ mode, theme }: { mode: PuzzleMode; theme?: strin
       setError(null);
       seen.current ??= await attemptedIds();
       const target = currentRating(p).rating + p.settings.difficulty;
-      const next = await findPuzzle({ target, exclude: seen.current, theme });
-      if (!next) throw new Error('Không tìm thấy puzzle phù hợp.');
+      const next = await findPuzzle({ target, exclude: seen.current, theme, avoid: current.current });
+      if (!next) throw new Error(theme ? 'Chủ đề này không còn puzzle nào khác.' : 'Không tìm thấy puzzle phù hợp.');
       seen.current.add(next.id);
+      current.current = next.id;
       setPuzzle(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

@@ -8,16 +8,28 @@ import { playSound } from '../core/sound';
 import { BLACK, Position, RED, START_FEN, makeMove, moveToUci, uciToMove, type Side } from '../core/xiangqi';
 import type { GameRecord } from '../data/db';
 import { getGame, useProfile } from '../data/store';
-import { think, stopEngine, type EngineInfo } from '../engine/client';
+import { EngineCancelled, think, stopEngine, type EngineInfo } from '../engine/client';
 
 const REVIEW_MS = 350;
+
+/** A normalised FEN with both kings, or null if `fen` cannot be used. */
+function validFen(fen: string): string | null {
+  try {
+    const p = new Position(fen);
+    return p.kings[RED] && p.kings[BLACK] ? p.fen() : null;
+  } catch {
+    return null;
+  }
+}
 
 export function Analysis() {
   const profile = useProfile();
   const [params] = useSearchParams();
   const gameId = Number(params.get('game'));
+  const fenParam = params.get('fen');
   const [record, setRecord] = useState<GameRecord | null>(null);
-  const [startFen, setStartFen] = useState(params.get('fen') ?? START_FEN);
+  // A link with a broken ?fen= opens the normal start position instead of failing.
+  const [startFen, setStartFen] = useState(() => (fenParam && validFen(fenParam)) || START_FEN);
   const [moves, setMoves] = useState<string[]>([]);
   const [ply, setPly] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -26,13 +38,19 @@ export function Analysis() {
   const [evals, setEvals] = useState<(PositionEval | undefined)[]>([]);
   const [reviewing, setReviewing] = useState<number | null>(null);
   const [fenInput, setFenInput] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const cancelReview = useRef(false);
+  const [error, setError] = useState<string | null>(() => (fenParam && !validFen(fenParam) ? 'FEN trong liên kết không hợp lệ.' : null));
+  const [engineError, setEngineError] = useState<string | null>(null);
+  /** Incremented to stop the running review (Dừng, a new board, another game). */
+  const reviewRun = useRef(0);
 
   useEffect(() => {
     if (!gameId) return;
     void getGame(gameId).then((g) => {
       if (!g) return;
+      // A review of the previous game must not write into this one.
+      reviewRun.current++;
+      setReviewing(null);
+      setEvals([]);
       setRecord(g);
       setStartFen(g.startFen);
       setMoves(g.moves);
@@ -68,14 +86,20 @@ export function Analysis() {
   // Live engine analysis of the current position.
   useEffect(() => {
     setInfo(null);
+    setEngineError(null);
     if (!engineOn || reviewing !== null || !pos.hasLegalMove()) return;
     let cancelled = false;
-    think({ fen: startFen, moves: moves.slice(0, ply), timeMs: 5000 }, (i) => !cancelled && setInfo(i))
-      .then((r) => !cancelled && setInfo(r))
-      .catch(() => {});
+    const request = think({ fen: startFen, moves: moves.slice(0, ply), timeMs: 5000 }, (i) => !cancelled && setInfo(i));
+    request.then(
+      (r) => !cancelled && setInfo(r),
+      (e: unknown) => {
+        if (!cancelled && !(e instanceof EngineCancelled)) setEngineError(e instanceof Error ? e.message : String(e));
+      },
+    );
     return () => {
       cancelled = true;
-      stopEngine();
+      // Only this effect's own request, so a review that just started is not cancelled.
+      stopEngine(request.id);
     };
   }, [engineOn, startFen, moves, ply, reviewing, pos]);
 
@@ -105,12 +129,18 @@ export function Analysis() {
     setPly(ply + 1);
   };
 
+  const stopReview = () => {
+    reviewRun.current++;
+    setReviewing(null);
+  };
+
   const runReview = async () => {
-    cancelReview.current = false;
+    const run = ++reviewRun.current;
+    const live = () => reviewRun.current === run;
     setEngineOn(false);
     const out: PositionEval[] = [];
     for (let i = 0; i <= moves.length; i++) {
-      if (cancelReview.current) break;
+      if (!live()) return;
       setReviewing(i);
       const p = new Position(startFen);
       for (let j = 0; j < i; j++) p.play(uciToMove(moves[j]));
@@ -124,11 +154,14 @@ export function Analysis() {
         const r = await think({ fen: startFen, moves: moves.slice(0, i), timeMs: REVIEW_MS });
         const sign = toMove === RED ? 1 : -1;
         out.push({ cp: r.score * sign, mate: r.mate !== undefined ? r.mate * sign : undefined, best: r.move ?? undefined });
-      } catch {
+      } catch (e) {
+        if (live() && !(e instanceof EngineCancelled)) setEngineError(e instanceof Error ? e.message : String(e));
         break;
       }
+      if (!live()) return;
       setEvals([...out]);
     }
+    if (!live()) return;
     setEvals([...out]);
     setReviewing(null);
   };
@@ -137,6 +170,7 @@ export function Analysis() {
     try {
       const p = new Position(fenInput);
       if (!p.kings[RED] || !p.kings[BLACK]) throw new Error('Thiếu Tướng.');
+      stopReview();
       setRecord(null);
       setStartFen(p.fen());
       setMoves([]);
@@ -203,7 +237,11 @@ export function Analysis() {
           </div>
           {engineOn && (
             <div className="mt-3 rounded-lg bg-panel-2 p-2 text-sm">
-              {info ? (
+              {!pos.hasLegalMove() ? (
+                <span className="text-muted">Ván cờ đã kết thúc: {sideName(pos.turn)} hết nước đi (thua).</span>
+              ) : engineError ? (
+                <span className="text-bad">⚠ {engineError}</span>
+              ) : info ? (
                 <>
                   <div className="flex justify-between">
                     <b>{formatEval(toRed(info, pos.turn))}</b>
@@ -232,7 +270,7 @@ export function Analysis() {
                 <div className="h-2 overflow-hidden rounded-full bg-white/10">
                   <div className="h-full bg-accent transition-all" style={{ width: `${(reviewing / (moves.length + 1)) * 100}%` }} />
                 </div>
-                <button className="btn btn-sm mt-2" onClick={() => (cancelReview.current = true)}>
+                <button className="btn btn-sm mt-2" onClick={stopReview}>
                   Dừng
                 </button>
               </div>
@@ -272,6 +310,7 @@ export function Analysis() {
             <button
               className="btn btn-sm"
               onClick={() => {
+                stopReview();
                 setRecord(null);
                 setStartFen(START_FEN);
                 setMoves([]);

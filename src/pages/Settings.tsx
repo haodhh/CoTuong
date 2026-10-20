@@ -125,7 +125,12 @@ export function SettingsPage() {
             type="file"
             accept="application/json"
             className="hidden"
-            onChange={(e) => e.target.files?.[0] && restore(e.target.files[0])}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              // Clear the input so choosing the same file again still triggers a restore.
+              e.target.value = '';
+              if (file) void restore(file);
+            }}
           />
           <button
             className="btn"

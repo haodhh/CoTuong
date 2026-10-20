@@ -93,24 +93,34 @@ function RushRun({
   const seen = useRef<Promise<Set<string>> | null>(null);
 
   const fetchAt = (i: number) => {
-    queue.current[i] ??= (async () => {
-      seen.current ??= attemptedIds();
-      const exclude = new Set([...(await seen.current), ...used.current]);
-      const p = await findPuzzle({ target: targetFor(i), exclude });
-      if (p) used.current.add(p.id);
-      return p;
-    })();
+    if (!queue.current[i]) {
+      const request = (async () => {
+        seen.current ??= attemptedIds();
+        const exclude = new Set([...(await seen.current), ...used.current]);
+        const p = await findPuzzle({ target: targetFor(i), exclude });
+        if (p) used.current.add(p.id);
+        return p;
+      })();
+      queue.current[i] = request;
+      // A failed load (e.g. offline) is not kept, so trying again fetches anew.
+      request.catch(() => {
+        if (queue.current[i] === request) delete queue.current[i];
+      });
+    }
     return queue.current[i];
   };
 
   const show = async (i: number) => {
     try {
       const p = await fetchAt(i);
-      void fetchAt(i + 1);
+      fetchAt(i + 1).catch(() => {
+        // Prefetch only: a failure is retried when that puzzle is needed.
+      });
       if (!p) throw new Error('Hết puzzle phù hợp.');
       if (!finished.current) setPuzzle(p);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const offline = e instanceof TypeError || !navigator.onLine;
+      setError(offline ? 'Mất kết nối mạng, không tải được puzzle tiếp theo.' : e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -188,7 +198,28 @@ function RushRun({
     );
   }
 
-  if (error) return <div className="card text-bad">{error}</div>;
+  if (error && !over) {
+    return (
+      <div className="card mx-auto max-w-lg text-center">
+        <div className="font-semibold text-bad">{error}</div>
+        <div className="mt-1 text-sm text-muted">Điểm hiện tại: {log.filter((e) => e.success).length}</div>
+        <div className="mt-3 flex justify-center gap-2">
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              setError(null);
+              void show(index.current);
+            }}
+          >
+            ↻ Thử lại
+          </button>
+          <button className="btn" onClick={end}>
+            Kết thúc lượt
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (!profile || !puzzle) return <div className="text-muted">Đang chuẩn bị puzzle…</div>;
 
   const header = (
