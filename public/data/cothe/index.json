@@ -1,7 +1,7 @@
 {
  "version": 2,
- "generatedAt": "2026-10-20T08:24:38.290Z",
- "total": 6554,
+ "generatedAt": "2026-10-20T12:03:26.844Z",
+ "total": 6514,
  "books": [
   {
    "id": "stnt",
@@ -30,7 +30,7 @@
   },
   {
    "id": "tuongcuc",
-   "count": 72,
+   "count": 70,
    "file": "tuongcuc.json"
   },
   {
@@ -80,7 +80,7 @@
   },
   {
    "id": "sat4000",
-   "count": 3725,
+   "count": 3687,
    "file": "sat4000.json"
   }
  ]

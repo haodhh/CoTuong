@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Game, REASON_TEXT, legalDests, moveSquares, sideName, type GameResult } from '../core/game';
 import { PIECE_NAME } from '../core/notation';
 import { playSound } from '../core/sound';
-import { BLACK, Position, RED, SQUARES, makeMove, moveToUci, sideOf, typeOf, type Side } from '../core/xiangqi';
+import { Position, RED, SQUARES, makeMove, moveToUci, sideOf, typeOf, type Side } from '../core/xiangqi';
 import type { GameRecord, Settings } from '../data/db';
 import { botMove, stopEngine, think } from '../engine/client';
 import { botLevel } from '../engine/levels';
@@ -133,6 +133,11 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
 
   const onMove = (from: number, to: number) => applyMove(moveToUci(makeMove(from, to)));
 
+  // Against the bot a takeback undoes the player's last move, so it needs one to undo.
+  const startTurn = useMemo(() => new Position(game.startFen).turn, [game]);
+  const playerMoveCount = game.moves.filter((_, i) => (startTurn + i) % 2 === playerSide).length;
+  const canTakeback = botSide === undefined ? game.moves.length > 0 : playerMoveCount > 0;
+
   const takeback = () => {
     stopEngine();
     setThinking(false);
@@ -223,7 +228,7 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
               {hintLoading ? '…' : '💡 Gợi ý'}
             </button>
           )}
-          <button className="btn" onClick={takeback} disabled={game.moves.length === 0 || (botSide !== undefined && game.moves.length < 2 && playerSide === BLACK)}>
+          <button className="btn" onClick={takeback} disabled={!canTakeback}>
             ↩ Đi lại
           </button>
           <button className="btn" onClick={() => setFlipped((f) => !f)}>

@@ -272,6 +272,8 @@ function CoThePlayer({ problem, siblings }: { problem: CoThe; siblings: CoThe[] 
   const [record, setRecord] = useState<GameRecord>(() => newRecord(problem));
   const [outcome, setOutcome] = useState<{ success: boolean; stars: number } | null>(null);
   const [showSolution, setShowSolution] = useState(false);
+  // Looking at the solution during an attempt counts like a hint.
+  const [peeked, setPeeked] = useState(false);
 
   const index = siblings.indexOf(problem);
   const prev = siblings[index - 1];
@@ -313,7 +315,7 @@ function CoThePlayer({ problem, siblings }: { problem: CoThe; siblings: CoThe[] 
       setOutcome({ success: false, stars: 0 });
       return;
     }
-    const stars = record.hints ? 1 : record.takebacks ? 2 : 3;
+    const stars = record.hints || peeked ? 1 : record.takebacks ? 2 : 3;
     setOutcome({ success: true, stars });
     void saveDrillResult(resultKey(problem.id), stars, record.moves.length);
   };
@@ -321,6 +323,7 @@ function CoThePlayer({ problem, siblings }: { problem: CoThe; siblings: CoThe[] 
   const retry = () => {
     setOutcome(null);
     setShowSolution(false);
+    setPeeked(false);
     setRecord(newRecord(problem));
     setAttempt((a) => a + 1);
   };
@@ -367,7 +370,13 @@ function CoThePlayer({ problem, siblings }: { problem: CoThe; siblings: CoThe[] 
       )}
       <div className="mt-3 flex flex-wrap gap-2">
         {problem.moves.length > 0 && (
-          <button className="btn btn-sm" onClick={() => setShowSolution((s) => !s)}>
+          <button
+            className="btn btn-sm"
+            onClick={() => {
+              if (!showSolution && !outcome) setPeeked(true);
+              setShowSolution((s) => !s);
+            }}
+          >
             {showSolution ? '♟ Quay lại chơi' : '📖 Xem lời giải'}
           </button>
         )}
@@ -400,7 +409,11 @@ function CoThePlayer({ problem, siblings }: { problem: CoThe; siblings: CoThe[] 
           key={attempt}
           record={record}
           settings={profile.settings}
-          onChange={setRecord}
+          onChange={(r) => {
+            setRecord(r);
+            // A takeback after the end reopens the game.
+            if (r.result === undefined) setOutcome(null);
+          }}
           botTimeMs={BOT_MS}
           scriptedMove={scriptedMove}
           checkEnd={checkEnd}
@@ -467,7 +480,8 @@ function SolutionViewer({ problem, settings, header }: { problem: CoThe; setting
           <b>{cotheBook(problem.book)?.computed ? 'Lời giải (do máy tìm)' : 'Lời giải trong sách'}</b>
           <div className="text-xs text-muted">
             Dùng ◀ ▶ hoặc phím mũi tên để xem từng nước.
-            {ply === problem.moves.length && (problem.mate ? ' Kết thúc: chiếu hết.' : problem.goal === 'draw' ? ' Kết thúc: hòa.' : '')}
+            {ply === problem.moves.length &&
+              (problem.mate ? (pos.inCheck() ? ' Kết thúc: chiếu hết.' : ' Kết thúc: bên bị vây hết nước đi (thua).') : problem.goal === 'draw' ? ' Kết thúc: hòa.' : '')}
           </div>
         </div>
         <MoveTable notation={notation} current={ply} onSelect={setPly} />

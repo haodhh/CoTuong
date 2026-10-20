@@ -69,8 +69,8 @@ function suffixTag(s: string | undefined): Tag {
   return undefined;
 }
 
-/** Tag from a material description such as 炮兵胜双士 or 车兵和车卒士. */
-const materialTag = (title: string): Tag => (/胜/.test(title) ? 'win' : /和/.test(title) ? 'draw' : undefined);
+/** Tag from a material description such as 炮兵胜双士 or 车兵和车卒士. 难胜 ("hard to win") is a draw with best defence. */
+const materialTag = (title: string): Tag => (/难胜/.test(title) ? 'draw' : /胜/.test(title) ? 'win' : /和/.test(title) ? 'draw' : undefined);
 
 const TACTICS: Record<string, string> = {
   运子战术: 'Chiến thuật vận quân',
@@ -277,6 +277,8 @@ for (const book of BOOKS) {
     if (tag === 'red' || tag === 'black') {
       goal = 'win';
       winner = tag === 'red' ? RED : BLACK;
+    } else if (tag === 'win' && result === '1/2-1/2') {
+      goal = 'draw';
     } else if (tag === 'win') {
       goal = 'win';
       winner = resultWinner ?? mater ?? start.turn;
@@ -301,6 +303,19 @@ for (const book of BOOKS) {
     const side: Side = goal === 'win' ? winner! : start.turn;
     // If the opponent moves first, the book's first move is needed to start.
     if (side !== start.turn && moves.length === 0) {
+      drop(book.id);
+      continue;
+    }
+    // A line that ends with the player mated contradicts the problem; one that ends with the
+    // player mating shows a win even if the record calls it a draw.
+    if (mate && mater !== side) {
+      drop(book.id);
+      continue;
+    }
+    if (mate) goal = 'win';
+    // The mate collection only stores positions: keep the ones the solver could solve (this also
+    // drops a stray copy of the opening position).
+    if (book.id === 'sat4000' && moves.length === 0) {
       drop(book.id);
       continue;
     }
