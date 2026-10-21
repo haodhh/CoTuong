@@ -95,7 +95,11 @@ export function GameView({ record, settings, onChange, checkEnd, botTimeMs, onEn
     [game, finish, persist],
   );
 
-  useEffect(() => window.scrollTo(0, 0), []);
+  // A block, not `() => window.scrollTo(0, 0)`: since Chrome 150 scrollTo returns a Promise, and
+  // React would call whatever an effect returns as its cleanup ("… is not a function" on leaving).
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   // The bot's turn.
   useEffect(() => {

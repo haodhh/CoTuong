@@ -202,7 +202,9 @@ function CoTheList() {
   const books = useMemo(() => (bookKey === '*' ? undefined : bookKey.split(',')), [bookKey]);
   const { data, error } = useCoThe(books, attempt);
   const anyError = indexError ?? error;
-  useEffect(() => setLoadError(anyError), [anyError]);
+  useEffect(() => {
+    setLoadError(anyError);
+  }, [anyError]);
 
   const set = (patch: Record<string, string>) => {
     const next = new URLSearchParams(params);
