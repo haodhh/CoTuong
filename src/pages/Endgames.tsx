@@ -42,7 +42,8 @@ function DrillList() {
   const profile = useProfile();
   if (!results || !profile) return null;
   const groups = [...new Set(DRILLS.map((d) => d.group))];
-  const total = [...results.values()].reduce((s, r) => s + r.stars, 0);
+  // The same table also holds Cờ thế results ("cothe:…").
+  const total = DRILLS.reduce((s, d) => s + (results.get(d.id)?.stars ?? 0), 0);
   return (
     <div>
       <h1 className="mb-1 text-2xl font-extrabold">Tàn cuộc</h1>

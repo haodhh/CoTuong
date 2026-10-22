@@ -245,6 +245,29 @@ export async function saveDrillResult(drillId: string, stars: number, moves: num
   });
 }
 
+/**
+ * The record after one more finished attempt at a Cờ thế problem. Records saved before the
+ * counts existed only held solved problems, which count as one win.
+ */
+export function addCoTheResult(old: DrillResult | undefined, drillId: string, success: boolean, stars: number, moves: number, now: number): DrillResult {
+  const wins = old?.wins ?? ((old?.stars ?? 0) > 0 ? 1 : 0);
+  return {
+    drillId,
+    stars: Math.max(success ? stars : 0, old?.stars ?? 0),
+    bestMoves: success ? Math.min(moves, old?.bestMoves || Infinity) : (old?.bestMoves ?? 0),
+    ts: now,
+    wins: wins + (success ? 1 : 0),
+    losses: (old?.losses ?? 0) + (success ? 0 : 1),
+  };
+}
+
+/** Saves a finished attempt at a Cờ thế problem (won or not). */
+export async function recordCoTheResult(drillId: string, success: boolean, stars: number, moves: number) {
+  await db.transaction('rw', db.drills, async () => {
+    await db.drills.put(addCoTheResult(await db.drills.get(drillId), drillId, success, stars, moves, Date.now()));
+  });
+}
+
 export function useDrillResults(): Map<string, DrillResult> | undefined {
   return useLiveQuery(async () => new Map((await db.drills.toArray()).map((d) => [d.drillId, d])));
 }
@@ -343,7 +366,15 @@ export async function importBackup(json: string) {
     return { ...g, updatedAt: isNum(g.updatedAt) ? g.updatedAt : g.ts } as GameRecord;
   });
   const drills = clean<DrillResult>(data.drills, (d) =>
-    isStr(d.drillId) && isNum(d.stars) ? ({ ...d, bestMoves: isNum(d.bestMoves) ? d.bestMoves : 0, ts: isNum(d.ts) ? d.ts : 0 } as DrillResult) : null,
+    isStr(d.drillId) && isNum(d.stars)
+      ? ({
+          ...d,
+          bestMoves: isNum(d.bestMoves) ? d.bestMoves : 0,
+          ts: isNum(d.ts) ? d.ts : 0,
+          wins: isNum(d.wins) ? d.wins : undefined,
+          losses: isNum(d.losses) ? d.losses : undefined,
+        } as DrillResult)
+      : null,
   );
   const lessons = clean<LessonProgress>(data.lessons, (l) =>
     isStr(l.lessonId) ? ({ ...l, completedAt: isNum(l.completedAt) ? l.completedAt : 0 } as LessonProgress) : null,

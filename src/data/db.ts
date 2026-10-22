@@ -85,10 +85,14 @@ export interface GameRecord {
 
 export interface DrillResult {
   drillId: string;
+  /** Best result, 0 until the problem is solved. */
   stars: number;
-  /** Fewest moves used to win. */
+  /** Fewest moves used to win (0 while never won). */
   bestMoves: number;
   ts: number;
+  /** Finished attempts (Cờ thế): solved, and lost or not solved in time. */
+  wins?: number;
+  losses?: number;
 }
 
 export interface LessonProgress {

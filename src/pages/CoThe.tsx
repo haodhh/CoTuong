@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Board } from '../components/Board';
+import { Fireworks } from '../components/Fireworks';
 import { GameView, MoveTable } from '../components/GameView';
 import { BackLink } from '../components/scroll';
 import { COTHE_BOOKS, cotheBook } from '../content/cotheBooks';
@@ -10,7 +11,7 @@ import { Position, uciToMove, type Side } from '../core/xiangqi';
 import { LEVELS } from '../core/difficulty';
 import { bookOfId, loadCoTheBooks, loadCoTheIndex, playerMoves, type CoThe, type CoTheIndex } from '../data/cotheData';
 import type { DrillResult, GameRecord, Settings } from '../data/db';
-import { saveDrillResult, useDrillResults, useProfile } from '../data/store';
+import { recordCoTheResult, useDrillResults, useProfile } from '../data/store';
 
 const PAGE = 24;
 const BOT_MS = 1000;
@@ -160,6 +161,35 @@ function Stars({ n }: { n: number }) {
   );
 }
 
+/** Finished attempts at a problem; results saved before the counts existed were wins. */
+function tally(r: DrillResult | undefined) {
+  const wins = r?.wins ?? ((r?.stars ?? 0) > 0 ? 1 : 0);
+  const losses = r?.losses ?? 0;
+  return { wins, losses, solved: (r?.stars ?? 0) > 0, tried: wins + losses > 0 };
+}
+
+/** The green tick of a solved problem. */
+function SolvedTick({ className = '' }: { className?: string }) {
+  return (
+    <span
+      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-good text-xs font-bold text-white ${className}`}
+      title="Đã giải"
+      aria-label="Đã giải"
+    >
+      ✓
+    </span>
+  );
+}
+
+function WinLoss({ r }: { r: DrillResult | undefined }) {
+  const { wins, losses } = tally(r);
+  return (
+    <span className="whitespace-nowrap text-muted">
+      Thắng <b className="text-good">{wins}</b> · Thua <b className="text-bad">{losses}</b>
+    </span>
+  );
+}
+
 export function LevelBadge({ level }: { level: number }) {
   const l = LEVELS.find((x) => x.level === level);
   return l ? <span className={`rounded px-1.5 py-0.5 ${l.color}`}>{l.name}</span> : null;
@@ -230,9 +260,10 @@ function CoTheList() {
     const list = (data ?? []).filter((p) => {
       if (goal !== 'all' && p.goal !== goal) return false;
       if (level && p.level !== level) return false;
-      const solved = (results?.get(resultKey(p.id))?.stars ?? 0) > 0;
+      const { solved, tried } = tally(results?.get(resultKey(p.id)));
       if (status === 'solved' && !solved) return false;
       if (status === 'unsolved' && solved) return false;
+      if (status === 'tried' && (solved || !tried)) return false;
       if (q && !p.titleVi.toLowerCase().includes(q) && !p.title.includes(q) && String(p.no) !== q && !p.id.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -350,6 +381,7 @@ function CoTheList() {
           <option value="all">Mọi trạng thái</option>
           <option value="unsolved">Chưa giải</option>
           <option value="solved">Đã giải</option>
+          <option value="tried">Đã thử, chưa giải</option>
         </select>
         <input
           className="min-w-0 flex-1 rounded-lg bg-panel-2 px-3 py-1.5 text-sm sm:max-w-60"
@@ -398,12 +430,14 @@ function CoTheList() {
 
 function CoTheCard({ p, settings, result }: { p: CoThe; settings: Settings; result?: DrillResult }) {
   const book = cotheBook(p.book);
+  const { solved, tried } = tally(result);
   return (
-    <Link to={`/cothe/${p.id}`} className={`card flex gap-3 transition-colors hover:bg-panel-2 ${result?.stars ? 'border border-good/40' : ''}`}>
+    <Link to={`/cothe/${p.id}`} className={`card relative flex gap-3 transition-colors hover:bg-panel-2 ${solved ? 'border border-good/40' : ''}`}>
+      {solved && <SolvedTick className="absolute top-2 right-2" />}
       <div className="w-24 shrink-0">
         <Board fen={p.fen} orientation={p.side} coordinates={false} animation={false} theme={settings.boardTheme} pieceStyle={settings.pieceStyle} />
       </div>
-      <div className="min-w-0 text-sm">
+      <div className={`min-w-0 text-sm ${solved ? 'pr-6' : ''}`}>
         <div className="font-semibold leading-tight">{p.titleVi}</div>
         <div className="text-xs text-muted">{p.title}</div>
         <div className="mt-1 text-xs text-muted">
@@ -415,8 +449,13 @@ function CoTheCard({ p, settings, result }: { p: CoThe; settings: Settings; resu
           <span className={`rounded px-1.5 py-0.5 ${p.goal === 'win' ? 'bg-accent/30' : 'bg-sky-700/40'}`}>{p.goal === 'win' ? 'Thắng' : 'Hòa'}</span>
           {p.side === 1 && <span className="rounded bg-stone-900 px-1.5 py-0.5 ring-1 ring-stone-600">cầm Đen</span>}
           {p.moves.length > 0 && <span className="text-muted">{playerMoves(p)} nước</span>}
-          {result && <Stars n={result.stars} />}
+          {solved && <Stars n={result!.stars} />}
         </div>
+        {tried && (
+          <div className="mt-1 text-xs">
+            <WinLoss r={result} />
+          </div>
+        )}
       </div>
     </Link>
   );
@@ -434,6 +473,8 @@ function CoThePlayer({ problem, siblings }: { problem: CoThe; siblings: CoThe[] 
   const [attempt, setAttempt] = useState(0);
   const [record, setRecord] = useState<GameRecord>(() => newRecord(problem));
   const [outcome, setOutcome] = useState<{ success: boolean; stars: number } | null>(null);
+  /** Raised on each solve to play the fireworks; back to 0 when they are over. */
+  const [celebrate, setCelebrate] = useState(0);
   const [showSolution, setShowSolution] = useState(false);
   // Looking at the solution during an attempt counts like a hint.
   const [peeked, setPeeked] = useState(false);
@@ -472,15 +513,13 @@ function CoThePlayer({ problem, siblings }: { problem: CoThe; siblings: CoThe[] 
     return problem.goal === 'win' ? { winner: (1 - side) as Side, reason: 'limit' } : { winner: null, reason: 'limit' };
   };
 
-  const onEnd = (result: GameResult) => {
+  const onEnd = (result: GameResult, game: Game) => {
     const success = problem.goal === 'win' ? result.winner === side : result.winner !== 1 - side;
-    if (!success) {
-      setOutcome({ success: false, stars: 0 });
-      return;
-    }
-    const stars = record.hints || peeked ? 1 : record.takebacks ? 2 : 3;
-    setOutcome({ success: true, stars });
-    void saveDrillResult(resultKey(problem.id), stars, record.moves.length);
+    const stars = !success ? 0 : record.hints || peeked ? 1 : record.takebacks ? 2 : 3;
+    setOutcome({ success, stars });
+    // Every finished attempt counts, solved or not.
+    void recordCoTheResult(resultKey(problem.id), success, stars, game.moves.length);
+    if (success) setCelebrate((c) => c + 1);
   };
 
   const retry = () => {
@@ -516,9 +555,16 @@ function CoThePlayer({ problem, siblings }: { problem: CoThe; siblings: CoThe[] 
           Đi đúng lời giải thì đối thủ cũng đáp theo lời giải.
         </div>
       </div>
-      {best && (
-        <div className="mt-2 text-sm text-muted">
-          Kết quả tốt nhất: <Stars n={best.stars} />
+      {tally(best).tried && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          {tally(best).solved ? (
+            <span className="flex items-center gap-1.5 font-semibold text-good">
+              <SolvedTick /> Đã giải <Stars n={best!.stars} />
+            </span>
+          ) : (
+            <span className="text-muted">Chưa giải</span>
+          )}
+          <WinLoss r={best} />
         </div>
       )}
       {outcome && (
@@ -569,6 +615,7 @@ function CoThePlayer({ problem, siblings }: { problem: CoThe; siblings: CoThe[] 
 
   return (
     <div>
+      {celebrate > 0 && <Fireworks key={celebrate} onDone={() => setCelebrate(0)} />}
       <BackLink to="/cothe" className="link mb-3 inline-block text-sm">
         ← Tất cả cờ thế
       </BackLink>
