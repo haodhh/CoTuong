@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { legalDests, moveSquares, sideName } from '../core/game';
+import { Fireworks } from './Fireworks';
 import { PuzzleSession, mateLength, puzzleLine, type Puzzle } from '../core/puzzle';
 import { playSound } from '../core/sound';
 import { themeName } from '../core/themes';
@@ -38,6 +39,8 @@ export function PuzzlePlayer({ puzzle, settings, rush, onResult, onFinished, onN
   const [syncKey, setSyncKey] = useState(0);
   const [hintLevel, setHintLevel] = useState(0);
   const [viewPly, setViewPly] = useState<number | null>(null);
+  /** Fireworks after a solve (not in Rush, where the next puzzle follows at once). */
+  const [celebrate, setCelebrate] = useState(false);
   // "Next" gets the focus for the keyboard (Enter), without scrolling the board out of view on a phone.
   const focusNext = useCallback((el: HTMLButtonElement | null) => {
     el?.focus({ preventScroll: true });
@@ -107,6 +110,7 @@ export function PuzzlePlayer({ puzzle, settings, rush, onResult, onFinished, onN
       playSound('success');
       report(success);
       setStatus('solved');
+      if (!rush) setCelebrate(true);
       later(rush ? 300 : 0, () => callbacks.current.onFinished?.(success));
       rerender();
       return;
@@ -206,6 +210,7 @@ export function PuzzlePlayer({ puzzle, settings, rush, onResult, onFinished, onN
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]" data-puzzle-id={puzzle.id}>
+      {celebrate && <Fireworks onDone={() => setCelebrate(false)} />}
       <div className="mx-auto w-full max-w-[min(100%,calc((100vh-130px)*0.84))]">
         <Board
           fen={fen}

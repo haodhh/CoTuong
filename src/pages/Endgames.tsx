@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Board } from '../components/Board';
+import { Fireworks } from '../components/Fireworks';
 import { GameView } from '../components/GameView';
 import { BackLink } from '../components/scroll';
 import { DRILLS, type Drill } from '../content/drills';
@@ -83,6 +84,8 @@ function DrillPlayer({ drill }: { drill: Drill }) {
   const navigate = useNavigate();
   const [attempt, setAttempt] = useState(0);
   const [stars, setStars] = useState<number | null>(null);
+  /** Raised on each win to play the fireworks; back to 0 when they are over. */
+  const [celebrate, setCelebrate] = useState(0);
   const [record, setRecord] = useState<GameRecord>(() => newRecord(drill));
   const results = useDrillResults();
   if (!profile) return null;
@@ -102,6 +105,7 @@ function DrillPlayer({ drill }: { drill: Drill }) {
     const moves = playerMoves(game);
     const s = starsFor(drill, moves);
     setStars(s);
+    setCelebrate((c) => c + 1);
     void saveDrillResult(drill.id, s, moves);
   };
 
@@ -113,6 +117,7 @@ function DrillPlayer({ drill }: { drill: Drill }) {
 
   return (
     <div>
+      {celebrate > 0 && <Fireworks key={celebrate} onDone={() => setCelebrate(0)} />}
       <BackLink to="/endgames" className="link mb-3 inline-block text-sm">
         ← Tất cả bài tàn cuộc
       </BackLink>
